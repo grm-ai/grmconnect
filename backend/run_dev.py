@@ -330,7 +330,7 @@ async def main() -> None:
     config = uvicorn.Config(
         "app.main:app",
         host="0.0.0.0",
-        port=8000,
+        port=int(os.environ.get("PORT", 8000)),  # Railway/Render inject $PORT; default 8000 locally
         reload=not _IS_PROD,          # no auto-reload in production
         reload_dirs=["app"],          # relative to backend/ (where run_dev.py is executed)
         log_level=settings.log_level.lower(),
