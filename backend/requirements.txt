@@ -5,6 +5,7 @@ uvicorn[standard]==0.30.1
 # Database – async + sync drivers
 sqlalchemy[asyncio]==2.0.30
 alembic==1.13.1
+aiosqlite==0.20.0          # async SQLite driver (used in production)
 asyncpg==0.29.0
 psycopg2-binary==2.9.9
 greenlet==3.0.3
@@ -33,6 +34,7 @@ google-generativeai==0.8.6
 
 # Auth helpers
 python-jose[cryptography]==3.3.0
+bcrypt==4.2.1              # used directly for password hashing (see app/security.py)
 passlib[bcrypt]==1.7.4
 
 # Structured logging
