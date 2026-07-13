@@ -1,5 +1,12 @@
-const API_URL = 'http://localhost:8000';
-const API_KEY = 'dev-secret-key-change-me';
+const API_URL = 'https://grmconnect-production.up.railway.app';
+
+// The logged-in user's JWT is stored by the content script (from the website) under lp_token.
+function getUserToken() {
+  return new Promise(resolve => {
+    try { chrome.storage.local.get(['lp_token'], r => resolve(r?.lp_token || null)); }
+    catch (_) { resolve(null); }
+  });
+}
 
 let _cachedProfile = null;
 
@@ -73,11 +80,17 @@ async function connectSession() {
       origins: [{ origin: 'https://www.linkedin.com', localStorage: [] }],
     };
 
+    const token = await getUserToken();
+    if (!token) {
+      showError('Please log in to GRM Connect first.\n\nOpen the GRM Connect website, log in, then click this again.');
+      return;
+    }
+
     let response;
     try {
       response = await fetch(`${API_URL}/linkedin/save-session`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
         body: JSON.stringify({
           storage_state: storageState,
           account_name: 'default',

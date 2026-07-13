@@ -6,6 +6,7 @@
   "permissions": ["cookies", "scripting", "tabs", "storage", "debugger"],
   "host_permissions": [
     "https://*.linkedin.com/*",
+    "https://grmconnect-production.up.railway.app/*",
     "http://localhost:8000/*"
   ],
   "background": {
@@ -13,7 +14,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["http://localhost/*", "http://127.0.0.1/*"],
+      "matches": ["https://*.vercel.app/*", "http://localhost/*", "http://127.0.0.1/*"],
       "js": ["content.js"],
       "run_at": "document_start"
     },

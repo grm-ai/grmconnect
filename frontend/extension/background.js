@@ -10,7 +10,7 @@
  * as long as the LinkedIn tab is open — no 30-second service worker timeout issue.
  */
 
-const API = 'http://localhost:8000';
+const API = 'https://grmconnect-production.up.railway.app';
 const KEY = 'dev-secret-key-change-me';
 const HDR = { 'Content-Type': 'application/json', 'X-API-Key': KEY };
 
