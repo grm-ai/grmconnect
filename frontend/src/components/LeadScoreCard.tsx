@@ -26,7 +26,7 @@ export function LeadScoreCard({ lead, onClose }: LeadScoreCardProps) {
   const updateStatus = useUpdateLeadStatus()
 
   async function handleStatusChange(status: LeadStatus) {
-    await updateStatus.mutateAsync({ id: lead.id, status })
+    await updateStatus.mutateAsync({ id: String(lead.id), status })
     toast.success(`Status updated to ${status}`)
   }
 
