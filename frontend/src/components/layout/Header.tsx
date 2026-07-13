@@ -15,13 +15,13 @@ const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   '/ai-workspace':      { title: 'AI Workspace',        subtitle: 'Generate personalized outreach with AI' },
   '/lead-intelligence': { title: 'Lead Intelligence',   subtitle: 'Deep insights on your prospects' },
   '/analytics':         { title: 'Analytics',           subtitle: 'Performance metrics and trends' },
-  '/settings':          { title: 'Settings',            subtitle: 'Configure your LeadPilot workspace' },
+  '/settings':          { title: 'Settings',            subtitle: 'Configure your GRM Connect workspace' },
 }
 
 export function Header() {
   const router = useRouter()
   const { theme, toggleTheme, setNotificationPanelOpen, notificationPanelOpen } = useUIStore()
-  const meta = PAGE_TITLES[router.pathname] ?? { title: 'LeadPilot AI', subtitle: '' }
+  const meta = PAGE_TITLES[router.pathname] ?? { title: 'GRM Connect AI', subtitle: '' }
 
   const qc = useQueryClient()
   const [user, setUser] = useState<AuthUser | null>(null)

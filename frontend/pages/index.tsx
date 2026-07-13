@@ -35,7 +35,7 @@ export default function Home() {
             <div className="w-8 h-8 rounded-xl gradient-brand flex items-center justify-center shadow-sm">
               <Zap className="w-4 h-4 text-white" strokeWidth={2.5} />
             </div>
-            <span className="font-bold text-base gradient-text">LeadPilot</span>
+            <span className="font-bold text-base gradient-text">GRM Connect</span>
           </div>
           <nav className="ml-auto flex items-center gap-2">
             {authed ? (
@@ -68,7 +68,7 @@ export default function Home() {
               <span className="gradient-text">meeting-booking machine</span>
             </h1>
             <p className="mt-5 text-base sm:text-lg text-muted-foreground max-w-xl mx-auto">
-              LeadPilot writes personalized invites, follows up, and converses with replies —
+              GRM Connect writes personalized invites, follows up, and converses with replies —
               automatically — until a call lands on your calendar.
             </p>
             <div className="mt-8 flex items-center justify-center gap-3">
@@ -148,9 +148,9 @@ export default function Home() {
         <div className="max-w-6xl mx-auto px-5 py-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-lg gradient-brand flex items-center justify-center"><Zap className="w-3 h-3 text-white" /></div>
-            <span className="font-semibold text-foreground">LeadPilot</span>
+            <span className="font-semibold text-foreground">GRM Connect</span>
           </div>
-          <p>© {new Date().getFullYear()} LeadPilot. Built for founders who’d rather be on calls.</p>
+          <p>© {new Date().getFullYear()} GRM Connect. Built for founders who’d rather be on calls.</p>
         </div>
       </footer>
     </div>

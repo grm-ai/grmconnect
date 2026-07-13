@@ -65,7 +65,7 @@ function ConnectButton({ lead }: { lead: Lead }) {
     window.dispatchEvent(new CustomEvent('leadpilot-ping'))
     const timer = setTimeout(() => {
       window.removeEventListener('leadpilot-extension-ready', onReady)
-      if (!sent) toast.error('Extension not responding — install the LeadPilot extension or use the ⋮ menu to fix the LinkedIn URL.')
+      if (!sent) toast.error('Extension not responding — install the GRM Connect extension or use the ⋮ menu to fix the LinkedIn URL.')
     }, 3000)
     return () => { clearTimeout(timer); window.removeEventListener('leadpilot-extension-ready', onReady) }
   }, [job?.status])

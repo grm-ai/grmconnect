@@ -165,7 +165,7 @@ export function ImportFromLinkedIn({ open, onClose, onImported }: ImportFromLink
                   <li>Go to <strong>linkedin.com/search/results/people</strong></li>
                   <li>Apply your filters (title, location, industry, company size, etc.)</li>
                   <li>Copy the full URL from the browser address bar</li>
-                  <li>Paste it below — LeadPilot will extract all matching profiles</li>
+                  <li>Paste it below — GRM Connect will extract all matching profiles</li>
                 </ol>
                 <p className="text-muted-foreground">Sales Navigator URLs also work.</p>
               </div>

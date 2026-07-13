@@ -203,7 +203,7 @@ function StatusBar({ status, profilesFound, pagesScraped, error }: {
         <div>
           <p className="text-xs font-medium text-blue-600 dark:text-blue-400">Extension starting...</p>
           <p className="text-[11px] text-muted-foreground">
-            Opening LinkedIn in your Chrome — make sure the LeadPilot extension is installed & enabled
+            Opening LinkedIn in your Chrome — make sure the GRM Connect extension is installed & enabled
           </p>
         </div>
       </div>
@@ -278,7 +278,7 @@ export default function SearcherPage() {
   const [pendingTooLong, setPendingTooLong] = useState(false)
   const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Detect if the LeadPilot extension is installed
+  // Detect if the GRM Connect extension is installed
   useEffect(() => {
     const onReady = () => setExtConnected(true)
     window.addEventListener('leadpilot-extension-ready', onReady)
@@ -361,7 +361,7 @@ export default function SearcherPage() {
         setIsActive(true)
         qc.invalidateQueries({ queryKey: ['scrape-job-status', id] })
 
-        // Wake up the LeadPilot Chrome extension to process this job.
+        // Wake up the GRM Connect Chrome extension to process this job.
         setPendingTooLong(false)
         window.dispatchEvent(new CustomEvent('leadpilot-scrape-start', {
           detail: { job_id: id, url: url.trim(), max_profiles: maxProfiles }
@@ -782,13 +782,13 @@ export default function SearcherPage() {
                     <div>
                       <p className="text-sm font-bold">Extension not responding</p>
                       <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
-                        The LeadPilot extension didn't start. Follow these steps:
+                        The GRM Connect extension didn't start. Follow these steps:
                       </p>
                     </div>
                     <div className="text-left space-y-2 bg-muted/50 rounded-xl p-4">
                       {[
                         'Press F5 to reload this page (required after extension reload)',
-                        'Make sure LeadPilot extension is enabled in chrome://extensions',
+                        'Make sure GRM Connect extension is enabled in chrome://extensions',
                         'Click "New Search" and try again',
                       ].map((step, i) => (
                         <div key={i} className="flex items-start gap-2 text-xs">

@@ -188,7 +188,7 @@ async function connectSession() {
       });
     } catch (_) {
       showError(
-        'Cannot reach LeadPilot backend.\n\n' +
+        'Cannot reach GRM Connect backend.\n\n' +
         'Run this command first:\ncd backend\npython run_dev.py'
       );
       return;
@@ -205,7 +205,7 @@ async function connectSession() {
         textEl.innerHTML =
           `<strong>Connected as ${escHtml(name)}!</strong><br/>` +
           (headline ? `<span style="font-size:11px;color:#888">${escHtml(headline)}</span><br/><br/>` : '') +
-          'Session saved. LeadPilot can now automate LinkedIn on your behalf.';
+          'Session saved. GRM Connect can now automate LinkedIn on your behalf.';
       }
       show('success');
     } else {

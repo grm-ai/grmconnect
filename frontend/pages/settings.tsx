@@ -237,7 +237,7 @@ export default function SettingsPage() {
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
                     <Zap className="w-4 h-4 text-primary" />
-                    Install LeadPilot Extension
+                    Install GRM Connect Extension
                     <Badge className="text-[10px] ml-auto bg-primary/20 text-primary border-0">Recommended</Badge>
                   </CardTitle>
                   <CardDescription className="text-xs">
@@ -250,8 +250,8 @@ export default function SettingsPage() {
                       { n: '1', text: 'Open Chrome → address bar → chrome://extensions' },
                       { n: '2', text: 'Enable "Developer mode" (top-right toggle)' },
                       { n: '3', text: 'Click "Load unpacked" → select the extension folder below' },
-                      { n: '4', text: 'Pin the ⚡ LeadPilot icon to your toolbar' },
-                      { n: '5', text: 'Click the icon → "Connect to LeadPilot" — done!' },
+                      { n: '4', text: 'Pin the ⚡ GRM Connect icon to your toolbar' },
+                      { n: '5', text: 'Click the icon → "Connect to GRM Connect" — done!' },
                     ].map(s => (
                       <li key={s.n} className="flex items-start gap-2.5 text-xs text-muted-foreground">
                         <span className="w-5 h-5 rounded-full gradient-brand flex items-center justify-center text-white text-[10px] font-bold shrink-0 mt-0.5">{s.n}</span>
@@ -289,7 +289,7 @@ export default function SettingsPage() {
                     )}
                   </div>
                   <CardDescription className="text-xs">
-                    Connect your LinkedIn account so LeadPilot can send connection requests,
+                    Connect your LinkedIn account so GRM Connect can send connection requests,
                     messages, and read your inbox automatically.
                   </CardDescription>
                 </CardHeader>
@@ -926,8 +926,8 @@ export default function SettingsPage() {
                   {[
                     { step: '1', text: 'Add leads with LinkedIn profile URLs via the Leads page' },
                     { step: '2', text: 'Create a Campaign with a connection request message + follow-up sequence' },
-                    { step: '3', text: 'Activate the campaign — LeadPilot sends connection requests with your personalized invite note (up to your daily limit)' },
-                    { step: '4', text: 'Every 15 minutes, LeadPilot polls your LinkedIn inbox and detects accepted connections' },
+                    { step: '3', text: 'Activate the campaign — GRM Connect sends connection requests with your personalized invite note (up to your daily limit)' },
+                    { step: '4', text: 'Every 15 minutes, GRM Connect polls your LinkedIn inbox and detects accepted connections' },
                     { step: '5', text: 'When someone accepts, the first follow-up message is automatically scheduled and sent' },
                     { step: '6', text: 'When they reply, the message appears in Conversations — you write back or let AI suggest a response' },
                   ].map(({ step, text }) => (

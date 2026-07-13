@@ -95,7 +95,7 @@ export default function LeadsPage() {
         }, 5000)
       })
     } catch (e) {
-      toast.error('Extension not responding. Make sure LeadPilot extension is installed.')
+      toast.error('Extension not responding. Make sure GRM Connect extension is installed.')
     } finally {
       setResolving(false)
     }

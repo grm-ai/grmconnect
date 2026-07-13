@@ -45,7 +45,7 @@ export default function LoginPage() {
           <div className="w-12 h-12 rounded-2xl gradient-brand mx-auto flex items-center justify-center mb-3">
             <Sparkles className="w-6 h-6 text-white" />
           </div>
-          <h1 className="text-xl font-bold">Welcome to LeadPilot</h1>
+          <h1 className="text-xl font-bold">Welcome to GRM Connect</h1>
           <p className="text-sm text-muted-foreground mt-1">Log in to your workspace</p>
         </div>
 

@@ -86,7 +86,7 @@ async function connectSession() {
         }),
       });
     } catch (_) {
-      showError('Cannot reach LeadPilot backend.\n\nRun: python backend/run_dev.py');
+      showError('Cannot reach GRM Connect backend.\n\nRun: python backend/run_dev.py');
       return;
     }
 
