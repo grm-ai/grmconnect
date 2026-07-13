@@ -1,0 +1,51 @@
+# ── Secrets & env (NEVER commit) ─────────────────────────────────────────────
+.env
+.env.*
+!*.example                # keep .env.production.example templates
+# Extra safety for the known secret files:
+backend/.env.dev
+frontend/.env.local
+
+# ── LinkedIn cookies + saved API keys (backend/sessions/*.json) ───────────────
+sessions/
+**/sessions/
+
+# ── Databases (user data, password hashes) ───────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+
+# ── Node / Next ──────────────────────────────────────────────────────────────
+node_modules/
+.next/
+out/
+.turbo/
+npm-debug.log*
+yarn-error.log*
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── OS / editor ──────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# ── Deploy runtime data (created on the server, not committed) ────────────────
+data/
+certbot/

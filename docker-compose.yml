@@ -1,0 +1,43 @@
+# LeadPilot / grmconnect — full stack on one host (backend + frontend + nginx + SSL).
+# Config comes from a `.env` file on the server (copy of .env.production.example — NOT committed).
+services:
+  backend:
+    build: ./backend
+    env_file: [.env]
+    volumes:
+      - ./data/db:/app/data          # SQLite database (persists across rebuilds)
+      - ./data/sessions:/app/sessions # LinkedIn cookies + saved API keys
+      - ./data/logs:/app/logs
+    expose: ["8000"]
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Baked into the browser bundle at build time — must be the public HTTPS API URL.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_API_KEY: ${NEXT_PUBLIC_API_KEY}
+    expose: ["3000"]
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    depends_on: [backend, frontend]
+    restart: unless-stopped
+
+  # Auto-renews the Let's Encrypt certificate every 12h.
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done;'"
+    restart: unless-stopped

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: system-ui, sans-serif; }
+    body { width: 320px; background: #0f172a; color: #e2e8f0; }
+    .header { background: linear-gradient(135deg, #6366f1, #8b5cf6); padding: 16px; display: flex; align-items: center; gap: 10px; }
+    .logo { width: 32px; height: 32px; background: rgba(255,255,255,0.2); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+    .title { font-size: 15px; font-weight: 700; color: white; }
+    .subtitle { font-size: 11px; color: rgba(255,255,255,0.7); }
+    .panel { display: none; padding: 16px; }
+    .panel.active { display: block; }
+    .status-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .dot.green { background: #22c55e; }
+    .dot.yellow { background: #f59e0b; animation: pulse 1.5s infinite; }
+    .dot.red { background: #ef4444; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    .status-text { font-size: 13px; font-weight: 600; }
+    .sub-text { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+    .btn { width: 100%; padding: 10px; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
+    .btn:hover { opacity: .85; }
+    .btn-primary { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; }
+    .btn-danger { background: #dc2626; color: white; margin-top: 8px; }
+    .btn-ghost { background: rgba(255,255,255,0.06); color: #94a3b8; margin-top: 8px; }
+    .info-box { background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.3); border-radius: 8px; padding: 10px 12px; margin-top: 10px; font-size: 11px; color: #94a3b8; line-height: 1.6; }
+    .user-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 12px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
+    .avatar { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg,#6366f1,#8b5cf6); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; color: white; flex-shrink: 0; }
+    .user-name { font-size: 13px; font-weight: 600; }
+    .user-headline { font-size: 11px; color: #64748b; margin-top: 2px; }
+    #error-msg { font-size: 12px; color: #fca5a5; margin-top: 8px; white-space: pre-wrap; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">⚡</div>
+    <div>
+      <div class="title">LeadPilot</div>
+      <div class="subtitle">LinkedIn Automation</div>
+    </div>
+  </div>
+
+  <!-- Checking -->
+  <div class="panel active" id="panel-checking">
+    <div class="status-row">
+      <div class="dot yellow"></div>
+      <div><div class="status-text">Checking LinkedIn...</div></div>
+    </div>
+  </div>
+
+  <!-- Not logged in -->
+  <div class="panel" id="panel-not-logged-in">
+    <div class="status-row" style="background:rgba(239,68,68,0.1)">
+      <div class="dot red"></div>
+      <div>
+        <div class="status-text">Not logged in to LinkedIn</div>
+        <div class="sub-text">Please log in to LinkedIn first</div>
+      </div>
+    </div>
+    <button class="btn btn-primary" id="btn-open-linkedin">Open LinkedIn</button>
+  </div>
+
+  <!-- Ready to connect -->
+  <div class="panel" id="panel-ready">
+    <div id="user-card-ready" class="user-card">
+      <div class="avatar" id="avatar">L</div>
+      <div>
+        <div class="user-name" id="user-name">LinkedIn User</div>
+        <div class="user-headline" id="user-headline"></div>
+      </div>
+    </div>
+    <button class="btn btn-primary" id="btn-connect">⚡ Connect to LeadPilot</button>
+    <div class="info-box">This sends your LinkedIn session to LeadPilot so it can automate on your behalf.</div>
+  </div>
+
+  <!-- Success -->
+  <div class="panel" id="panel-success">
+    <div class="status-row" style="background:rgba(34,197,94,0.1)">
+      <div class="dot green"></div>
+      <div><div class="status-text">Connected!</div></div>
+    </div>
+    <div class="status-text" style="font-size:12px;color:#94a3b8;margin-top:4px" id="success-name"></div>
+    <div class="info-box" style="margin-top:10px">LeadPilot is now connected. Go to the <strong>Searcher</strong> page to extract leads.</div>
+    <button class="btn btn-ghost" id="btn-close">Close</button>
+  </div>
+
+  <!-- Error -->
+  <div class="panel" id="panel-error">
+    <div class="status-row" style="background:rgba(239,68,68,0.1)">
+      <div class="dot red"></div>
+      <div><div class="status-text">Connection failed</div></div>
+    </div>
+    <div id="error-msg"></div>
+    <button class="btn btn-primary" style="margin-top:12px" id="btn-retry">Try Again</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,135 @@
+version: "3.9"
+
+# Full-stack deployment compose file.
+# Starts: api, worker, scheduler, postgres, redis, frontend, nginx
+#
+# Usage:
+#   cp ../../backend/.env.example .env   # create backend env
+#   cp ../../frontend/.env.example .env.frontend
+#   docker compose up --build -d
+#   docker compose exec api alembic upgrade head
+
+services:
+
+  # ── Backend API ──────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    container_name: ap_api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+    env_file: .env
+    volumes:
+      - backend_logs:/app/logs
+      - backend_sessions:/app/sessions
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [internal]
+
+  # ── Celery worker ─────────────────────────────────────────────────────────────
+  worker:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    container_name: ap_worker
+    command: celery -A app.workers.celery_worker worker --loglevel=info --concurrency=4 --logfile=/app/logs/celery.log
+    env_file: .env
+    volumes:
+      - backend_logs:/app/logs
+      - backend_sessions:/app/sessions
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [internal]
+
+  # ── Celery beat ───────────────────────────────────────────────────────────────
+  scheduler:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    container_name: ap_scheduler
+    command: celery -A app.workers.celery_worker beat --loglevel=info --logfile=/app/logs/scheduler.log
+    env_file: .env
+    volumes:
+      - backend_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [internal]
+
+  # ── PostgreSQL ────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: ap_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: linkedin_automation
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks: [internal]
+
+  # ── Redis ─────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: ap_redis
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks: [internal]
+
+  # ── Frontend (Next.js) ────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+    container_name: ap_frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://nginx/api
+      NEXT_PUBLIC_API_KEY: \${API_KEY}
+    depends_on: [api]
+    restart: unless-stopped
+    networks: [internal]
+
+  # ── Nginx reverse proxy ───────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: ap_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ../nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on: [api, frontend]
+    restart: unless-stopped
+    networks: [internal]
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  backend_logs:
+  backend_sessions:

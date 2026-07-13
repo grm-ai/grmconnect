@@ -1,0 +1,65 @@
+version: "3.9"
+
+# Observability stack – attach to the deployment network.
+# Usage:
+#   docker compose -f docker-compose.yml -f ../monitoring/docker-compose.monitoring.yml up -d
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.51.1
+    container_name: ap_prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    networks: [internal]
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: ap_grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on: [prometheus]
+    restart: unless-stopped
+    networks: [internal]
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.59.0
+    container_name: ap_redis_exporter
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    ports:
+      - "9121:9121"
+    restart: unless-stopped
+    networks: [internal]
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: ap_postgres_exporter
+    environment:
+      DATA_SOURCE_NAME: postgresql://postgres:password@postgres:5432/linkedin_automation?sslmode=disable
+    ports:
+      - "9187:9187"
+    restart: unless-stopped
+    networks: [internal]
+
+networks:
+  internal:
+    external: true
+    name: deployment_internal
+
+volumes:
+  prometheus_data:
+  grafana_data:
