@@ -101,20 +101,7 @@ export function Sidebar() {
     >
       {/* ── Logo ─────────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2.5 px-4 h-[56px] shrink-0 border-b border-slate-200/60 dark:border-white/[0.06]">
-        <Logo className="w-7 h-7 shrink-0 shadow-sm border border-border" rounded="rounded-lg" />
-        <AnimatePresence>
-          {!sidebarCollapsed && (
-            <motion.span
-              initial={{ opacity: 0, x: -6 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -6 }}
-              transition={{ duration: 0.15 }}
-              className="font-bold text-[13px] tracking-tight whitespace-nowrap gradient-text"
-            >
-              Witty Adverts
-            </motion.span>
-          )}
-        </AnimatePresence>
+        <Logo className="w-9 h-9 shrink-0 shadow-sm border border-border" rounded="rounded-lg" />
         <AnimatePresence>
           {!sidebarCollapsed && (
             <motion.button

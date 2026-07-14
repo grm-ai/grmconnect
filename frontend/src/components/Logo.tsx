@@ -6,11 +6,25 @@ import { cn } from '../lib/utils'
  * gold logo stays legible on both light and dark backgrounds.
  * Size it with a width/height utility in `className` (e.g. "w-8 h-8").
  */
-export function Logo({ className, rounded = 'rounded-lg' }: { className?: string; rounded?: string }) {
+export function Logo({
+  className,
+  rounded = 'rounded-lg',
+  zoom = 1.35,
+}: {
+  className?: string
+  rounded?: string
+  /** Scales the artwork inside its tile to crop the logo's white padding so the name reads clearly. */
+  zoom?: number
+}) {
   return (
     <span className={cn('inline-flex items-center justify-center overflow-hidden bg-white', rounded, className)}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/logo.png" alt="GRM Connect" className="w-full h-full object-contain" />
+      <img
+        src="/logo.png"
+        alt="GRM Connect"
+        className="w-full h-full object-contain"
+        style={{ transform: `scale(${zoom})` }}
+      />
     </span>
   )
 }

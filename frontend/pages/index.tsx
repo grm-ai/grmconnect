@@ -32,9 +32,8 @@ export default function Home() {
       {/* Nav */}
       <header className="sticky top-0 z-30 backdrop-blur-md bg-background/70 border-b border-border">
         <div className="max-w-6xl mx-auto px-5 h-16 flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Logo className="w-8 h-8 shadow-sm border border-border" rounded="rounded-xl" />
-            <span className="font-bold text-base gradient-text">GRM Connect</span>
+          <div className="flex items-center">
+            <Logo className="w-11 h-11 shadow-sm border border-border" rounded="rounded-xl" />
           </div>
           <nav className="ml-auto flex items-center gap-2">
             {authed ? (
@@ -169,8 +168,7 @@ export default function Home() {
       <footer className="border-t border-border">
         <div className="max-w-6xl mx-auto px-5 py-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
-            <Logo className="w-6 h-6 border border-border" rounded="rounded-lg" />
-            <span className="font-semibold text-foreground">GRM Connect</span>
+            <Logo className="w-9 h-9 border border-border" rounded="rounded-lg" />
           </div>
           <p>© {new Date().getFullYear()} GRM Connect. Built for founders who’d rather be on calls.</p>
         </div>
