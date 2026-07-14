@@ -1566,6 +1566,31 @@ async function clickConnectButton(tabId, profileUrl, note, leadEmail) {
     return { success: false, error: `Navigation to profile failed — tab ended up at ${navigatedUrl || '(unknown)'} instead of ${profileUrl}` };
   }
 
+  // Capture the REAL full name + /in/ vanity from the loaded profile (Sales Navigator abbreviates
+  // last names like "Adam S." and hides the real vanity). Fire-and-forget so it never blocks the
+  // send; the backend upgrades the lead's name/URL so it's recognisable and vanity-matchable later.
+  try {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        const canon = document.querySelector('link[rel="canonical"]')?.href || location.href || '';
+        const name = (document.querySelector('h1')?.textContent || '').trim().replace(/\s+/g, ' ');
+        return { canonical: canon, name };
+      },
+    });
+    const prof = res?.result;
+    if (prof) {
+      const m = String(prof.canonical).match(/\/in\/([^/?#]+)/);
+      const realUrl = m ? `https://www.linkedin.com/in/${m[1]}` : '';
+      post('/leads/update-linkedin-url', {
+        lead_sn_url: profileUrl,
+        linkedin_url: realUrl || profileUrl,
+        name: prof.name || undefined,
+      }).catch(() => {});
+      console.log('[LeadPilot BG] Captured real profile:', prof.name, '|', realUrl || '(no vanity)');
+    }
+  } catch (e) { console.warn('[LeadPilot BG] profile capture failed:', e?.message ?? e); }
+
   // ── PRIMARY: send via LinkedIn's OWN in-tab API (no un-automatable modal) ──
   // The invite UI modal is a preload render that never commits for automated clicks (confirmed
   // over a month of attempts), so drive LinkedIn's own invite request same-origin from the tab —

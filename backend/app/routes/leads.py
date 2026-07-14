@@ -623,9 +623,20 @@ async def update_linkedin_url(
 
     old_url = lead.linkedin_url
     lead.linkedin_url = new_url
+
+    # Also upgrade the name when the send flow captured the real full name from the profile page —
+    # Sales Navigator abbreviates last names ("Adam S."), so a longer real name ("Adam Spector")
+    # replaces it so the lead is recognisable and matchable by name later.
+    new_name = (body.get("name") or "").strip()
+    if new_name and len(new_name) > len(lead.name or "") and not new_name.rstrip(".").endswith((" S", " S")):
+        # Prefer a name that isn't itself an abbreviation (doesn't end in a single-letter last name).
+        parts = new_name.split()
+        if len(parts) >= 2 and len(parts[-1].rstrip(".")) > 1:
+            lead.name = new_name
+
     await db.commit()
-    app_logger.info("Updated lead %d URL: %s → %s", lead.id, old_url, new_url)
-    return ApiResponse(message="LinkedIn URL updated", data={"lead_id": lead.id, "linkedin_url": new_url})
+    app_logger.info("Updated lead %d URL: %s → %s (name=%s)", lead.id, old_url, new_url, lead.name)
+    return ApiResponse(message="LinkedIn URL updated", data={"lead_id": lead.id, "linkedin_url": new_url, "name": lead.name})
 
 
 @router.post("/reconcile-status", response_model=ApiResponse[dict])
