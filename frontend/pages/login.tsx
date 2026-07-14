@@ -3,7 +3,7 @@ import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { useQueryClient } from '@tanstack/react-query'
-import { Sparkles, Mail, Lock, Loader2 } from 'lucide-react'
+import { Sparkles, Mail, Lock, Loader2, Eye, EyeOff } from 'lucide-react'
 import { Button } from '../src/components/ui/button'
 import { Input } from '../src/components/ui/input'
 import { Label } from '../src/components/ui/label'
@@ -15,6 +15,7 @@ export default function LoginPage() {
   const qc = useQueryClient()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPw, setShowPw] = useState(false)
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
@@ -61,7 +62,10 @@ export default function LoginPage() {
             <Label className="text-xs">Password</Label>
             <div className="relative">
               <Lock className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="h-10 pl-9 text-sm" autoComplete="current-password" />
+              <Input type={showPw ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="h-10 pl-9 pr-9 text-sm" autoComplete="current-password" />
+              <button type="button" onClick={() => setShowPw(v => !v)} aria-label={showPw ? 'Hide password' : 'Show password'} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
           </div>
           <Button type="submit" variant="gradient" className="w-full h-10 gap-2" disabled={loading}>
