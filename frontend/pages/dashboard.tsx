@@ -34,12 +34,12 @@ export default function Dashboard() {
       <div className="p-6 space-y-6">
         {/* Stats grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
-          <StatsCard title="Total Leads"       value={stats?.total_leads ?? 0}    change={12}  icon={<Users className="w-5 h-5 text-primary" />}        iconBg="bg-primary/10"   delay={0} />
-          <StatsCard title="Active Campaigns"  value={stats?.active_campaigns ?? 0} change={0} icon={<Megaphone className="w-5 h-5 text-amber-500" />}  iconBg="bg-amber-500/10" delay={0.05} />
-          <StatsCard title="Replies Received"  value={stats?.replies_received ?? 0} change={8} icon={<MessageSquare className="w-5 h-5 text-emerald-500" />} iconBg="bg-emerald-500/10" delay={0.1} />
-          <StatsCard title="Hot Leads"         value={stats?.hot_leads ?? 0}      change={25}  icon={<Flame className="w-5 h-5 text-orange-500" />}       iconBg="bg-orange-500/10" delay={0.15} />
-          <StatsCard title="Meetings Booked"   value={stats?.meetings_booked ?? 0} change={50} icon={<Calendar className="w-5 h-5 text-yellow-500" />}    iconBg="bg-yellow-500/10" delay={0.2} />
-          <StatsCard title="Conversion Rate"   value={`${stats?.conversion_rate ?? 0}%`} change={3.2} icon={<TrendingUp className="w-5 h-5 text-blue-500" />} iconBg="bg-blue-500/10" delay={0.25} />
+          <StatsCard title="Total Leads"       value={stats?.total_leads ?? 0}     icon={<Users className="w-5 h-5 text-primary" />}        iconBg="bg-primary/10"   delay={0} />
+          <StatsCard title="Active Campaigns"  value={stats?.active_campaigns ?? 0} icon={<Megaphone className="w-5 h-5 text-amber-500" />}  iconBg="bg-amber-500/10" delay={0.05} />
+          <StatsCard title="Replies Received"  value={stats?.replies_received ?? 0} icon={<MessageSquare className="w-5 h-5 text-emerald-500" />} iconBg="bg-emerald-500/10" delay={0.1} />
+          <StatsCard title="Hot Leads"         value={stats?.hot_leads ?? 0}       icon={<Flame className="w-5 h-5 text-orange-500" />}       iconBg="bg-orange-500/10" delay={0.15} />
+          <StatsCard title="Meetings Booked"   value={stats?.meetings_booked ?? 0} icon={<Calendar className="w-5 h-5 text-yellow-500" />}    iconBg="bg-yellow-500/10" delay={0.2} />
+          <StatsCard title="Conversion Rate"   value={`${stats?.conversion_rate ?? 0}%`} icon={<TrendingUp className="w-5 h-5 text-blue-500" />} iconBg="bg-blue-500/10" delay={0.25} />
         </div>
 
         {/* Calls booked by autopilot (pending confirmation + confirmed) */}
