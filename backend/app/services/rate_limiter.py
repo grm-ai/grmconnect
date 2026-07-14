@@ -71,6 +71,19 @@ class RateLimiter:
         result = await db.execute(q)
         return result.scalar_one() or 0
 
+    async def count_connect_sent_today(self, db: "AsyncSession", user_id: int) -> int:
+        """Invites actually sent today, counted from the LEAD (connection_sent_at) — this survives
+        campaign deletion, unlike counting CONNECT actions which cascade-delete with the campaign."""
+        from sqlalchemy import select, func
+        from app.models import Lead
+        start, end = _today_window()
+        q = select(func.count()).select_from(Lead).where(
+            Lead.user_id == user_id,
+            Lead.connection_sent_at >= start,
+            Lead.connection_sent_at <= end,
+        )
+        return (await db.execute(q)).scalar_one() or 0
+
     async def check_global_connect_limit(self, db: "AsyncSession", user_id: int | None = None) -> tuple[bool, int, int]:
         """Returns (allowed, used_today, limit)."""
         limit = settings.daily_connect_limit

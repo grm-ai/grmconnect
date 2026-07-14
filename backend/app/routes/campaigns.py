@@ -263,7 +263,7 @@ async def campaign_due_actions(
     from app.config import settings as _cfg
     from app.services.rate_limiter import RateLimiter
     _rl = RateLimiter()
-    connect_used = await _rl._count_from_db(db, None, "CONNECT", user_id=user.id)
+    connect_used = await _rl.count_connect_sent_today(db, user.id)   # from the lead, survives campaign delete
     msg_used = (await _rl._count_from_db(db, None, "MESSAGE", user_id=user.id)) + (await _rl._count_from_db(db, None, "FOLLOWUP", user_id=user.id))
     connect_remaining = max(0, _cfg.daily_connect_limit - connect_used)
     msg_remaining = max(0, _cfg.daily_message_limit - msg_used)
@@ -378,6 +378,8 @@ async def campaign_action_result(
         if action.action_type == ActionType.CONNECT:
             if lead.connection_status == ConnectionStatus.NOT_SENT:
                 lead.connection_status = ConnectionStatus.PENDING
+                # Stamp the send on the LEAD (survives campaign deletion) so the daily cap is accurate.
+                lead.connection_sent_at = now
         else:  # MESSAGE / FOLLOWUP → persist the outbound message
             db.add(Message(
                 lead_id=lead.id,
