@@ -4,3 +4,6 @@ out/
 .env.local
 .env.*.local
 npm-debug.log*
+
+# Generated at build time by scripts/zip-extension.js
+public/grmconnect-extension.zip

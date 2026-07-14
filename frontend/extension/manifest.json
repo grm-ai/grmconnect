@@ -3,7 +3,7 @@
   "name": "GRM Connect Connector",
   "version": "2.0.0",
   "description": "Connect LinkedIn + scrape search results inside your real Chrome.",
-  "permissions": ["cookies", "scripting", "tabs", "storage"],
+  "permissions": ["cookies", "scripting", "tabs", "storage", "debugger"],
   "host_permissions": [
     "https://*.linkedin.com/*",
     "https://grmconnect-production.up.railway.app/*",

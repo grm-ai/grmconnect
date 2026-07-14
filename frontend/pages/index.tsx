@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { motion } from 'framer-motion'
 import {
   Zap, Sparkles, Bot, CalendarCheck, BarChart3, Users, ArrowRight,
-  MessageSquareText, ShieldCheck, Rocket,
+  MessageSquareText, ShieldCheck, Rocket, Download, Chrome,
 } from 'lucide-react'
 import { isAuthed } from '../src/lib/auth'
 
@@ -125,6 +125,29 @@ export default function Home() {
               <p className="text-sm text-muted-foreground mt-1.5">{s.desc}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Chrome extension */}
+      <section className="max-w-4xl mx-auto px-5 py-12">
+        <div className="rounded-2xl border border-border bg-card p-6 sm:p-8 flex flex-col sm:flex-row items-center gap-5 text-center sm:text-left">
+          <div className="w-12 h-12 rounded-xl gradient-brand flex items-center justify-center shrink-0">
+            <Chrome className="w-6 h-6 text-white" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-semibold text-lg">Get the Chrome extension</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Needed to connect your LinkedIn and run outreach in your own browser. Download, unzip, then load it via{' '}
+              <span className="font-medium text-foreground">chrome://extensions → Load unpacked</span>. Full steps are on the Settings page after you log in.
+            </p>
+          </div>
+          <a
+            href="/grmconnect-extension.zip"
+            download
+            className="h-11 px-6 rounded-xl gradient-brand text-white font-semibold flex items-center gap-2 shrink-0 hover:opacity-90 transition-opacity"
+          >
+            <Download className="w-5 h-5" /> Download
+          </a>
         </div>
       </section>
 
