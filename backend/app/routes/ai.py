@@ -41,8 +41,9 @@ async def generate_message(
     user: User = Depends(get_current_user),
 ) -> ApiResponse[GenerateResponse]:
     from app.services.ai_generator import AIGenerator
+    from app.routes.settings_route import get_user_keys
 
-    ai = AIGenerator(sender=_sender_of(user))
+    ai = AIGenerator(sender=_sender_of(user), keys=get_user_keys(user.id))
     name    = body.lead_name or "there"
     company = body.lead_company
     context = body.context or ""

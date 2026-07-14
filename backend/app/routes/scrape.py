@@ -141,10 +141,13 @@ class ImportResult(BaseModel):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-async def _get_session_storage(db: AsyncSession) -> dict | None:
+async def _get_session_storage(db: AsyncSession, user_id: int) -> dict | None:
     from app.services.session_manager import SessionManager
     result = await db.execute(
-        select(BrowserSession).where(BrowserSession.status == "ACTIVE").limit(1)
+        select(BrowserSession)
+        .where(BrowserSession.status == "ACTIVE", BrowserSession.user_id == user_id)
+        .order_by(BrowserSession.last_used.desc())
+        .limit(1)
     )
     row = result.scalar_one_or_none()
     if not row:
@@ -407,7 +410,7 @@ async def preview_scrape(
     Sync scrape — waits for completion and returns the full result.
     For large scrapes prefer POST /scrape/start + polling /scrape/status/{id}.
     """
-    storage_state = await _get_session_storage(db)
+    storage_state = await _get_session_storage(db, user.id)
     if not storage_state:
         raise BadRequestError("No active LinkedIn session. Log in via Settings → LinkedIn first.")
 
@@ -697,7 +700,7 @@ async def start_connect_job(
     Start an async job that sends AI-personalized connection requests to the given profiles.
     Returns job_id immediately — poll GET /scrape/connect-status/{job_id} for live progress.
     """
-    storage_state = await _get_session_storage(db)
+    storage_state = await _get_session_storage(db, user.id)
     if not storage_state:
         raise BadRequestError("No active LinkedIn session. Log in via Settings → LinkedIn first.")
 

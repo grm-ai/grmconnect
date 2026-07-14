@@ -220,11 +220,12 @@ async def campaign_due_actions(
     # driven by the campaign goal + your About You profile. Generated text is cached back into the
     # action payload so it's stable and not regenerated on the next poll.
     from app.services.ai_generator import AIGenerator
+    from app.routes.settings_route import get_user_keys
     ai = AIGenerator(sender={
         "sender_name": user.sender_name or "", "sender_role": user.sender_role or "",
         "sender_company": user.sender_company or "", "sender_about": user.sender_about or "",
         "sender_talking_points": user.sender_talking_points or "",
-    })
+    }, keys=get_user_keys(user.id))
     goal = (campaign.goal or "").strip()
     _dirty = {"v": False}
 
@@ -551,7 +552,7 @@ async def campaign_autopilot_pending(
         "sender_name": user.sender_name or "", "sender_role": user.sender_role or "",
         "sender_company": user.sender_company or "", "sender_about": user.sender_about or "",
         "sender_talking_points": user.sender_talking_points or "",
-    })
+    }, keys=get_user_keys(user.id))
     goal = (campaign.goal or "").strip()
     out: list[dict] = []
     for lid in lead_ids:

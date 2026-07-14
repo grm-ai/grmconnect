@@ -774,13 +774,16 @@ async def save_session(
         if cookie.get("sameSite") == "None":
             cookie["secure"] = True
 
+    # Per-user cookie file so one account's LinkedIn session never overwrites or leaks into another's
+    # (the extension always sends account_name="default", so we key the storage by the user instead).
+    acct = f"u{user.id}"
     session_mgr = SessionManager()
-    session_mgr.save_session(body.account_name, body.storage_state)
+    session_mgr.save_session(acct, body.storage_state)
 
     # Upsert BrowserSession record (scoped to this user — each user has their own LinkedIn)
     res = await db.execute(
         select(BrowserSession).where(
-            BrowserSession.account_name == body.account_name, BrowserSession.user_id == user.id
+            BrowserSession.account_name == acct, BrowserSession.user_id == user.id
         )
     )
     row = res.scalar_one_or_none()
@@ -790,8 +793,8 @@ async def save_session(
     else:
         db.add(BrowserSession(
             user_id=user.id,
-            account_name=body.account_name,
-            cookie_file=f"sessions/{body.account_name}.json",
+            account_name=acct,
+            cookie_file=f"sessions/{acct}.json",
             status=SessionStatus.ACTIVE,
             last_used=datetime.now(timezone.utc),
         ))
@@ -1095,7 +1098,8 @@ async def revoke_session(
     user: User = Depends(get_current_user),
 ) -> ApiResponse[None]:
     res  = await db.execute(select(BrowserSession).where(
-        BrowserSession.status.in_([SessionStatus.ACTIVE, SessionStatus.EXPIRED])
+        BrowserSession.user_id == user.id,
+        BrowserSession.status.in_([SessionStatus.ACTIVE, SessionStatus.EXPIRED]),
     ))
     rows = res.scalars().all()
     mgr  = SessionManager()

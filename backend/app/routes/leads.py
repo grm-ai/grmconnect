@@ -581,7 +581,7 @@ async def extension_connect_result(
                     job["session_expired"] = True
                     expired_res = await session.execute(
                         select(BrowserSession)
-                        .where(BrowserSession.status == SessionStatus.ACTIVE)
+                        .where(BrowserSession.status == SessionStatus.ACTIVE, BrowserSession.user_id == user.id)
                         .order_by(BrowserSession.last_used.desc())
                         .limit(1)
                     )
@@ -662,6 +662,20 @@ async def reconcile_status(
         return (url.split("/in/")[1].split("/")[0].split("?")[0].strip()) or None
 
     leads = (await db.execute(select(Lead).where(Lead.user_id == user.id))).scalars().all()
+
+    # Leads we ACTUALLY tried to invite (a CONNECT action that succeeded). Only these may be kept
+    # "pending" by a loose name match — a freshly-fetched lead (no attempt) must never be flipped to
+    # "sent" just because its name collides with someone in the account's global pending list.
+    from app.models import Action, ActionType, ActionStatus
+    attempted_rows = (await db.execute(
+        select(Action.lead_id).where(
+            Action.user_id == user.id,
+            Action.action_type == ActionType.CONNECT,
+            Action.status == ActionStatus.SUCCESS,
+        )
+    )).scalars().all()
+    attempted_lead_ids = {lid for lid in attempted_rows if lid is not None}
+
     marked_pending = 0
     marked_connected = 0
     cleared = 0
@@ -669,12 +683,21 @@ async def reconcile_status(
         seg = seg_of(lead.linkedin_url)
         v = seg.lower() if seg else None
         ln = _norm_name(lead.name)
-        # Match connected by vanity (normal leads) OR fsd_profile id OR full name (SN leads).
-        if (v and v in connected) or (seg and seg in connected_ids) or (ln and ln in connected_names):
+        # Reliable match: by /in/ vanity (normal leads) or fsd_profile id.
+        vanity_connected = (v and v in connected) or (seg and seg in connected_ids)
+        vanity_pending   = (v and v in pending)
+        # Name match is a LOOSE fallback for SN leads (broken vanity). To avoid false "sent" when
+        # merely fetching, only let a name match MAINTAIN/UPGRADE a lead we already attempted
+        # (already PENDING) — NEVER flip a fresh NOT_SENT lead to sent/connected on a name alone.
+        already_attempted = lead.id in attempted_lead_ids
+        name_connected = already_attempted and ln and ln in connected_names
+        name_pending   = already_attempted and ln and ln in pending_names
+
+        if vanity_connected or name_connected:
             if lead.connection_status != ConnectionStatus.ACCEPTED:
                 marked_connected += 1
             lead.connection_status = ConnectionStatus.ACCEPTED
-        elif (v and v in pending) or (ln and ln in pending_names):
+        elif vanity_pending or name_pending:
             if lead.connection_status != ConnectionStatus.PENDING:
                 marked_pending += 1
             lead.connection_status = ConnectionStatus.PENDING
@@ -816,7 +839,9 @@ async def connect_to_lead(
     # Extension uses live browser cookies (credentials: 'include') — not the stored file.
     # So ACTIVE or EXPIRED status both work; we just need the session row to exist.
     session_row = (await db.execute(
-        select(BrowserSession).where(BrowserSession.status.in_(["ACTIVE", "EXPIRED"])).limit(1)
+        select(BrowserSession).where(
+            BrowserSession.user_id == user.id, BrowserSession.status.in_(["ACTIVE", "EXPIRED"])
+        ).limit(1)
     )).scalar_one_or_none()
     if not session_row:
         raise BadRequestError(

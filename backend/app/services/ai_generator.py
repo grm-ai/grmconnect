@@ -18,35 +18,23 @@ class AIGenerator:
     Last resort: built-in template.
     """
 
-    def __init__(self, sender: dict | None = None) -> None:
+    def __init__(self, sender: dict | None = None, keys: dict | None = None) -> None:
         self._gemini = None
         self._anthropic = None
         # Set whenever a real AI call fails / no key is configured, so callers can surface WHY
         # a fallback template was used (invalid key, quota, network, etc.) instead of failing silently.
         self.last_error: str | None = None
 
-        # Sender profile ("About You") — injected into every prompt so generated messages use the
-        # user's real identity. Per-user profile is passed in; falls back to the global file for
-        # background jobs that have no user context.
-        if sender is not None:
-            self._sender = sender
-        else:
-            try:
-                from app.routes.settings_route import get_sender_profile
-                self._sender = get_sender_profile()
-            except Exception:
-                self._sender = {}
+        # Sender profile ("About You") — passed in per-user by the caller. Background jobs with no
+        # user context get an empty profile (no personalisation), never another user's data.
+        self._sender = sender or {}
 
-        # Resolve keys: env var → persisted settings file → empty
+        # Resolve keys: the caller's OWN (per-user) key first, else the env var. We never read a
+        # shared/global key file here — each account uses only its own key.
         def _resolve(attr: str) -> str:
-            val = getattr(settings, attr, "") or ""
-            if not val:
-                try:
-                    from app.routes.settings_route import get_runtime_key
-                    val = get_runtime_key(attr) or ""
-                except Exception:
-                    pass
-            return val
+            if keys and str(keys.get(attr) or "").strip():
+                return str(keys[attr]).strip()
+            return getattr(settings, attr, "") or ""
 
         gemini_key    = _resolve("gemini_api_key")
         anthropic_key = _resolve("anthropic_api_key")

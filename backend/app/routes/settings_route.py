@@ -14,24 +14,32 @@ from app.schemas import ApiResponse
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
-# Persist app settings (API keys, sender profile) in the SAME dir as LinkedIn sessions — which on
-# Railway is the persistent /data volume (SESSION_DIR). Storing it under the app folder instead
-# would put it inside the container and wipe the saved keys on every redeploy.
-_SETTINGS_FILE = Path(app_settings.session_dir) / "app_settings.json"
+# Per-user settings (API keys, webhook, etc.) live in one file PER user under the SAME dir as
+# LinkedIn sessions — the persistent /data volume on Railway (SESSION_DIR). One file per user so
+# one account's API key is never visible to (or usable by) another account.
+_SETTINGS_DIR = Path(app_settings.session_dir) / "user_settings"
+# Legacy single-file store (pre multi-user). Read-only fallback so an existing global key still
+# works for the very first/owner account until they re-save it.
+_LEGACY_FILE = Path(app_settings.session_dir) / "app_settings.json"
 
 
-def _load() -> dict[str, Any]:
+def _user_file(user_id: int) -> Path:
+    return _SETTINGS_DIR / f"{user_id}.json"
+
+
+def _load(user_id: int) -> dict[str, Any]:
     try:
-        if _SETTINGS_FILE.exists():
-            return json.loads(_SETTINGS_FILE.read_text(encoding="utf-8"))
+        p = _user_file(user_id)
+        if p.exists():
+            return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
         pass
     return {}
 
 
-def _persist(data: dict[str, Any]) -> None:
-    _SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _SETTINGS_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+def _persist(user_id: int, data: dict[str, Any]) -> None:
+    _SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
+    _user_file(user_id).write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 def _mask(value: str) -> str:
@@ -70,15 +78,7 @@ async def get_settings(user: User = Depends(get_current_user)) -> ApiResponse[di
     Return persisted settings.
     Secret fields (API keys) are masked — the UI shows '●●●●' if configured.
     """
-    from app.config import settings as app_cfg
-
-    data = _load()
-
-    # Seed from env vars if the file doesn't have them yet (first run)
-    if "gemini_api_key" not in data and app_cfg.gemini_api_key:
-        data["gemini_api_key"] = app_cfg.gemini_api_key
-    if "anthropic_api_key" not in data and app_cfg.anthropic_api_key:
-        data["anthropic_api_key"] = app_cfg.anthropic_api_key
+    data = _load(user.id)
 
     out: dict[str, Any] = {}
     for k, v in data.items():
@@ -101,9 +101,7 @@ async def save_settings(body: SettingsIn, user: User = Depends(get_current_user)
     Persist settings to disk and apply API keys in-memory immediately.
     Empty string means 'leave unchanged'; null means 'clear the value'.
     """
-    from app.config import settings as app_cfg
-
-    data = _load()
+    data = _load(user.id)
     updates: list[str] = []
 
     for field, value in body.model_dump(exclude_none=True).items():
@@ -113,29 +111,26 @@ async def save_settings(body: SettingsIn, user: User = Depends(get_current_user)
         data[field] = value
         updates.append(field)
 
-        # Apply API keys to the live process immediately
-        if field == "gemini_api_key" and value:
-            try:
-                import google.generativeai as genai
-                genai.configure(api_key=value)
-            except ImportError:
-                pass
-            # Patch in-memory config so new AIGenerator instances pick it up
-            object.__setattr__(app_cfg, "gemini_api_key", value)
-
-        elif field == "anthropic_api_key" and value:
-            object.__setattr__(app_cfg, "anthropic_api_key", value)
-
-    _persist(data)
+    _persist(user.id, data)
     return ApiResponse(
         message=f"Saved: {', '.join(updates) or 'nothing changed'}.",
         data={"updated": updates},
     )
 
 
-def get_sender_profile() -> dict[str, str]:
-    """Return the persisted 'About You' sender profile used to personalise AI output."""
-    data = _load()
+def get_user_keys(user_id: int) -> dict[str, str]:
+    """Return a specific user's own AI API keys (never another account's)."""
+    d = _load(user_id)
+    return {
+        "gemini_api_key":    str(d.get("gemini_api_key", "") or ""),
+        "anthropic_api_key": str(d.get("anthropic_api_key", "") or ""),
+        "openai_api_key":    str(d.get("openai_api_key", "") or ""),
+    }
+
+
+def get_sender_profile(user_id: int | None = None) -> dict[str, str]:
+    """Return a user's persisted 'About You' sender profile (empty for background jobs w/o a user)."""
+    data = _load(user_id) if user_id is not None else {}
     return {
         "sender_name":    str(data.get("sender_name", "") or ""),
         "sender_role":    str(data.get("sender_role", "") or ""),
@@ -145,11 +140,8 @@ def get_sender_profile() -> dict[str, str]:
     }
 
 
-def get_runtime_key(key: str) -> str:
-    """
-    Helpers for other services to read the persisted key at runtime,
-    falling back to the environment-variable value.
-    """
+def get_runtime_key(key: str, user_id: int | None = None) -> str:
+    """Read a user's persisted key at runtime, falling back to the environment-variable value."""
     from app.config import settings as app_cfg
-    stored = _load().get(key, "")
+    stored = _load(user_id).get(key, "") if user_id is not None else ""
     return stored or getattr(app_cfg, key, "")
