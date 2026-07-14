@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Plus, Play, Pause, BarChart2, Users, MessageSquare,
   Calendar, ChevronRight, Megaphone, Settings2, Trash2, RefreshCw, RotateCcw,
+  Upload, Download,
 } from 'lucide-react'
 import { Layout } from '../src/components/layout/Layout'
 import { SequenceEditor } from '../src/components/SequenceEditor'
@@ -248,6 +249,9 @@ export default function CampaignsPage() {
   const [pickedIds, setPickedIds] = useState<Set<number>>(new Set())
   const [urlsText, setUrlsText] = useState('')
   const [tpl, setTpl] = useState({ connect: '', message: '', followup: '' })
+  // Rows parsed from an uploaded CSV — same shape the scrape/import endpoint expects.
+  const [fileRows, setFileRows] = useState<any[]>([])
+  const [fileName, setFileName] = useState('')
   async function openLaunch(cid: string) {
     setLaunchCid(cid)
     setTpl({ connect: '', message: '', followup: '' })
@@ -256,7 +260,77 @@ export default function CampaignsPage() {
     setLaunchLeads(eligible)
     setPickedIds(new Set())   // nothing pre-selected — audience = what you paste (search/URLs) or pick
     setUrlsText('')
+    setFileRows([]); setFileName('')
     setShowLaunch(true)
+  }
+
+  // ── File import (same import + enrol path as URL fetch) ─────────────────────
+  const SAMPLE_CSV =
+    'linkedin_url,name,title,company,location\n' +
+    'https://www.linkedin.com/in/jane-doe,Jane Doe,Founder & CEO,Acme Inc,San Francisco\n' +
+    'https://www.linkedin.com/in/john-smith,John Smith,Head of Sales,Globex,London\n'
+  function downloadSample() {
+    const blob = new Blob([SAMPLE_CSV], { type: 'text/csv;charset=utf-8;' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = 'grmconnect-leads-sample.csv'
+    document.body.appendChild(a); a.click(); a.remove()
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+  }
+  // Minimal CSV parser that respects quoted fields with embedded commas/newlines.
+  function parseCsv(text: string): string[][] {
+    const rows: string[][] = []
+    let cur: string[] = [], val = '', inQ = false
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i]
+      if (inQ) {
+        if (c === '"') { if (text[i + 1] === '"') { val += '"'; i++ } else inQ = false }
+        else val += c
+      } else if (c === '"') inQ = true
+      else if (c === ',') { cur.push(val); val = '' }
+      else if (c === '\n') { cur.push(val); rows.push(cur); cur = []; val = '' }
+      else if (c !== '\r') val += c
+    }
+    if (val.length || cur.length) { cur.push(val); rows.push(cur) }
+    return rows.filter(r => r.some(c => c.trim() !== ''))
+  }
+  function rowsToProfiles(rows: string[][]): any[] {
+    if (rows.length < 2) return []
+    const header = rows[0].map(h => h.trim().toLowerCase())
+    const idx = (names: string[]) => header.findIndex(h => names.includes(h))
+    const iUrl = idx(['linkedin_url', 'url', 'profile url', 'profile_url', 'linkedin'])
+    const iName = idx(['name', 'full name', 'full_name'])
+    const iTitle = idx(['title', 'headline', 'job title', 'job_title', 'role'])
+    const iCompany = idx(['company', 'organization', 'organisation'])
+    const iLocation = idx(['location', 'city', 'region'])
+    const out: any[] = []
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r]
+      const get = (i: number) => (i >= 0 && row[i] != null ? String(row[i]).trim() : '')
+      const url = get(iUrl), name = get(iName)
+      if (!url || !name) continue
+      out.push({
+        name, title: get(iTitle), company: get(iCompany), location: get(iLocation),
+        linkedin_url: url, profile_id: '', connection_degree: '', source: 'file',
+      })
+    }
+    return out
+  }
+  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    e.target.value = ''  // allow re-picking the same file later
+    if (!f) return
+    try {
+      const profiles = rowsToProfiles(parseCsv(await f.text()))
+      if (!profiles.length) {
+        toast.error('No usable rows. Each row needs a linkedin_url and a name — use the sample file.')
+        setFileRows([]); setFileName(''); return
+      }
+      setFileRows(profiles); setFileName(f.name)
+      toast.success(`${profiles.length} row(s) loaded from ${f.name}`)
+    } catch {
+      toast.error('Could not read that file. Please upload a .csv in the sample format.')
+    }
   }
   const togglePick = (id: number) => setPickedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   // Scrape a SEARCH url and enrol profiles into the campaign LIVE — each page's profiles are
@@ -305,8 +379,8 @@ export default function CampaignsPage() {
     const lines = urlsText.split(/\n+/).map(s => s.trim()).filter(Boolean)
     const profileUrls = lines.filter(u => u.includes('/in/'))
     const searchUrls = lines.filter(u => !u.includes('/in/') && (u.includes('/search/') || u.includes('savedSearchId') || u.includes('/sales/')))
-    if (!profileUrls.length && !searchUrls.length && pickedIds.size === 0) {
-      toast.error('Paste profile/search URL(s) or pick at least one lead.'); return
+    if (!profileUrls.length && !searchUrls.length && pickedIds.size === 0 && fileRows.length === 0) {
+      toast.error('Paste profile/search URL(s), upload a file, or pick at least one lead.'); return
     }
     setShowLaunch(false)
     // set_active:false → import/enrol ONLY. Nothing is sent until the user clicks ▶ Activate.
@@ -318,7 +392,20 @@ export default function CampaignsPage() {
         await jfetch('POST', `/campaigns/${launchCid}/activate`, { urls: profileUrls, lead_ids: [...pickedIds], ...tplBody })
         await loadProgress(launchCid)
       }
-      // 2) Search URLs → scrape + import LIVE (profiles appear as fetched, still nothing sent).
+      // 2) File-imported rows → SAME import + enrol path as fetch (no send).
+      if (fileRows.length) {
+        const imp = await jfetch('POST', '/scrape/import', { profiles: fileRows })
+        const ids = (imp?.data?.lead_ids || []) as number[]
+        if (ids.length) {
+          const act = await jfetch('POST', `/campaigns/${launchCid}/activate`, { lead_ids: ids, ...tplBody })
+          await loadProgress(launchCid)
+          qc.invalidateQueries({ queryKey: ['leads'] })
+          toast.info(`Imported ${ids.length} lead(s) from ${fileName || 'file'} · enrolled +${act?.data?.enrolled ?? ids.length}.`, { duration: 4000 })
+        } else {
+          toast.error('File import added 0 leads — check the linkedin_url and name columns are filled.')
+        }
+      }
+      // 3) Search URLs → scrape + import LIVE (profiles appear as fetched, still nothing sent).
       for (const su of searchUrls) await scrapeAndEnrollLive(launchCid, su, tplBody)
       toast.success('Profiles imported into the campaign — nothing sent yet. Click ▶ Activate to start sending invites.', { duration: 8000 })
     } finally {
@@ -654,6 +741,24 @@ export default function CampaignsPage() {
                 />
                 <p className="text-[10px] text-muted-foreground">Profile <b>/in/</b> URLs → added directly. A <b>search / Sales Nav</b> URL → all its profiles are fetched &amp; enrolled automatically (keep a LinkedIn tab open).</p>
               </div>
+              {/* Import from file — same import + enrol behaviour as fetch */}
+              <div className="rounded-lg border border-dashed border-border p-2.5 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold flex items-center gap-1"><Upload className="w-3 h-3" /> Or import from a file</Label>
+                  <button type="button" onClick={downloadSample} className="text-[11px] underline text-primary inline-flex items-center gap-0.5">
+                    <Download className="w-3 h-3" /> Sample file
+                  </button>
+                </div>
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={onPickFile}
+                  className="block w-full text-[11px] file:mr-2 file:rounded file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs file:cursor-pointer"
+                />
+                {fileRows.length > 0
+                  ? <p className="text-[10px] text-primary">✓ {fileRows.length} row(s) ready from <b>{fileName}</b> — will be imported &amp; enrolled just like fetch.</p>
+                  : <p className="text-[10px] text-muted-foreground">Download the sample, fill <b>linkedin_url</b> &amp; <b>name</b> (title/company/location optional), then upload. Nothing is sent until you click ▶ Activate.</p>}
+              </div>
               <div className="flex items-center justify-between pt-1">
                 <Label className="text-xs font-semibold">Or pick existing ({pickedIds.size}/{launchLeads.length})</Label>
                 <div className="flex gap-2 text-[11px]">
@@ -697,8 +802,10 @@ export default function CampaignsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setShowLaunch(false)}>Cancel</Button>
-            <Button size="sm" onClick={confirmLaunch} disabled={pickedIds.size === 0 && !urlsText.trim()} className="gap-1.5">
-              <Rocket className="w-3.5 h-3.5" /> {urlsText.trim() ? 'Fetch & Import (no send)' : `Import ${pickedIds.size} lead${pickedIds.size === 1 ? '' : 's'} (no send)`}
+            <Button size="sm" onClick={confirmLaunch} disabled={pickedIds.size === 0 && !urlsText.trim() && fileRows.length === 0} className="gap-1.5">
+              <Rocket className="w-3.5 h-3.5" /> {(urlsText.trim() || fileRows.length)
+                ? `Fetch & Import${fileRows.length ? ` (${fileRows.length} from file)` : ''} (no send)`
+                : `Import ${pickedIds.size} lead${pickedIds.size === 1 ? '' : 's'} (no send)`}
             </Button>
           </DialogFooter>
         </DialogContent>
