@@ -7,13 +7,11 @@ import { ScrollArea } from './ui/scroll-area'
 import { useUIStore } from '../store/ui-store'
 import { formatRelativeTime } from '../lib/utils'
 
-const NOTIFICATIONS = [
-  { id: '1', type: 'reply', title: 'Sarah Chen replied', body: 'Asked about pricing and timeline for Q3.', time: '2026-06-17T10:30:00Z', unread: true },
-  { id: '2', type: 'meeting', title: 'Meeting booked', body: 'Priya Kapoor confirmed Monday 10am EST demo.', time: '2026-06-17T09:00:00Z', unread: true },
-  { id: '3', type: 'ai', title: 'AI drafts ready', body: '15 follow-up messages generated for Q2 Enterprise campaign.', time: '2026-06-16T17:00:00Z', unread: true },
-  { id: '4', type: 'hot', title: 'New hot lead detected', body: 'Nicole Brown at RetailIQ upgraded to Hot (score: 88).', time: '2026-06-15T16:00:00Z', unread: false },
-  { id: '5', type: 'reply', title: 'Marcus Johnson replied', body: 'Interested in Q3 budget conversation, asked for pricing.', time: '2026-06-14T14:00:00Z', unread: false },
-]
+type Notif = { id: string; type: 'reply' | 'meeting' | 'ai' | 'hot'; title: string; body: string; time: string; unread: boolean }
+
+// No mock notifications. Real replies/booked-calls/hot-leads surface on their own pages
+// (Inbox, Dashboard → Calls Booked, Leads) until a dedicated notifications feed is built.
+const NOTIFICATIONS: Notif[] = []
 
 const ICONS = {
   reply:   <MessageSquare className="w-3.5 h-3.5 text-amber-500" />,
@@ -73,6 +71,13 @@ export function NotificationCenter() {
             {/* List */}
             <ScrollArea className="h-80">
               <div className="divide-y divide-border">
+                {NOTIFICATIONS.length === 0 && (
+                  <div className="flex flex-col items-center justify-center text-center px-6 py-14 gap-2">
+                    <Bell className="w-6 h-6 text-muted-foreground/40" />
+                    <p className="text-xs text-muted-foreground">No notifications yet</p>
+                    <p className="text-[11px] text-muted-foreground/70">Replies, booked calls and hot leads will show up here.</p>
+                  </div>
+                )}
                 {NOTIFICATIONS.map(n => (
                   <div key={n.id} className={`flex gap-3 px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors ${n.unread ? 'bg-primary/5' : ''}`}>
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${BG[n.type as keyof typeof BG]}`}>

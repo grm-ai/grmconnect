@@ -65,7 +65,6 @@ export function Header() {
           onClick={() => setNotificationPanelOpen(!notificationPanelOpen)}
         >
           <Bell className="w-4 h-4" />
-          <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full" />
         </Button>
 
         <Button size="sm" className="h-8 gap-1.5 text-xs">
