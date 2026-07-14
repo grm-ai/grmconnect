@@ -4,10 +4,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from app.dependencies import require_auth
+from app.models import User
+from app.security import get_current_user
 from app.schemas import ApiResponse
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
@@ -61,7 +62,7 @@ _SECRET_FIELDS = {"gemini_api_key", "anthropic_api_key", "openai_api_key", "webh
 
 
 @router.get("", response_model=ApiResponse[dict])
-async def get_settings(_: str = require_auth) -> ApiResponse[dict]:
+async def get_settings(user: User = Depends(get_current_user)) -> ApiResponse[dict]:
     """
     Return persisted settings.
     Secret fields (API keys) are masked — the UI shows '●●●●' if configured.
@@ -92,7 +93,7 @@ async def get_settings(_: str = require_auth) -> ApiResponse[dict]:
 
 
 @router.post("", response_model=ApiResponse[dict])
-async def save_settings(body: SettingsIn, _: str = require_auth) -> ApiResponse[dict]:
+async def save_settings(body: SettingsIn, user: User = Depends(get_current_user)) -> ApiResponse[dict]:
     """
     Persist settings to disk and apply API keys in-memory immediately.
     Empty string means 'leave unchanged'; null means 'clear the value'.
@@ -137,6 +138,7 @@ def get_sender_profile() -> dict[str, str]:
         "sender_role":    str(data.get("sender_role", "") or ""),
         "sender_company": str(data.get("sender_company", "") or ""),
         "sender_about":   str(data.get("sender_about", "") or ""),
+        "sender_talking_points": str(data.get("sender_talking_points", "") or ""),
     }
 
 

@@ -14,6 +14,7 @@ def _sender_of(user: User) -> dict:
     return {
         "sender_name": user.sender_name or "", "sender_role": user.sender_role or "",
         "sender_company": user.sender_company or "", "sender_about": user.sender_about or "",
+        "sender_talking_points": user.sender_talking_points or "",
     }
 
 

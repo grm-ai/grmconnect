@@ -85,6 +85,7 @@ async def create_tables() -> None:
                     ("sender_role", "VARCHAR(255)"),
                     ("sender_company", "VARCHAR(255)"),
                     ("sender_about", "TEXT"),
+                    ("sender_talking_points", "TEXT"),
                 ],
             }
             for table, cols in new_cols.items():

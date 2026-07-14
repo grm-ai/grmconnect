@@ -223,6 +223,7 @@ async def campaign_due_actions(
     ai = AIGenerator(sender={
         "sender_name": user.sender_name or "", "sender_role": user.sender_role or "",
         "sender_company": user.sender_company or "", "sender_about": user.sender_about or "",
+        "sender_talking_points": user.sender_talking_points or "",
     })
     goal = (campaign.goal or "").strip()
     _dirty = {"v": False}
@@ -549,6 +550,7 @@ async def campaign_autopilot_pending(
     ai = AIGenerator(sender={
         "sender_name": user.sender_name or "", "sender_role": user.sender_role or "",
         "sender_company": user.sender_company or "", "sender_about": user.sender_about or "",
+        "sender_talking_points": user.sender_talking_points or "",
     })
     goal = (campaign.goal or "").strip()
     out: list[dict] = []

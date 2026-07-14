@@ -91,6 +91,8 @@ class User(Base):
     sender_role: Mapped[str | None] = mapped_column(String(255))
     sender_company: Mapped[str | None] = mapped_column(String(255))
     sender_about: Mapped[str | None] = mapped_column(Text)
+    # Persisted "Context / Talking Points" the AI weaves into every message & reply.
+    sender_talking_points: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

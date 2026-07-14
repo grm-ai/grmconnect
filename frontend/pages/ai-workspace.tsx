@@ -94,6 +94,7 @@ export default function AIWorkspacePage() {
         sender_company: d.sender_company || '',
         sender_about:   d.sender_about   || '',
       })
+      setContext(d.sender_talking_points || '')   // persisted talking points → prefill & reuse
     }).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -106,6 +107,20 @@ export default function AIWorkspacePage() {
       toast.error('Could not save your info.')
     } finally {
       setSavingProfile(false)
+    }
+  }
+
+  // Persist the Context / Talking Points so every message & reply is built on it too.
+  const [savingContext, setSavingContext] = useState(false)
+  async function saveContext() {
+    setSavingContext(true)
+    try {
+      await jfetch('PATCH', '/auth/profile', { sender_talking_points: context })
+      toast.success('Talking points saved — the AI will use these in every message & reply.')
+    } catch {
+      toast.error('Could not save your talking points.')
+    } finally {
+      setSavingContext(false)
     }
   }
 
@@ -300,18 +315,27 @@ export default function AIWorkspacePage() {
               </CardContent>
             </Card>
 
-            {/* Context */}
-            <Card>
+            {/* Context / Talking Points — persisted, drives every generation & reply */}
+            <Card className="border-primary/30">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Context / Talking Points</CardTitle>
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-primary" />
+                  Context / Talking Points
+                </CardTitle>
+                <p className="text-[11px] text-muted-foreground">
+                  Saved &amp; reused — the AI weaves these into every message, follow-up &amp; auto-reply. Edit anytime.
+                </p>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-2">
                 <Textarea
                   value={context}
                   onChange={e => setContext(e.target.value)}
-                  placeholder="e.g. Focus on their recent Series B, mention team growth, reference competitor they use..."
-                  className="h-20 text-xs"
+                  placeholder="e.g. We help D2C brands cut CAC; mention our 14-day pilot; reference their recent funding; always aim to book a 15-min call."
+                  className="h-24 text-xs"
                 />
+                <Button size="sm" className="w-full gap-1.5" onClick={saveContext} disabled={savingContext} loading={savingContext}>
+                  <CheckCheck className="w-3.5 h-3.5" /> Save talking points
+                </Button>
               </CardContent>
             </Card>
           </div>

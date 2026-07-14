@@ -211,6 +211,7 @@ class AIGenerator:
         role    = (s.get("sender_role")    or "").strip()
         company = (s.get("sender_company") or "").strip()
         about   = (s.get("sender_about")   or "").strip()
+        talking = (s.get("sender_talking_points") or "").strip()
 
         bits: list[str] = []
         if name or role or company:
@@ -222,6 +223,8 @@ class AIGenerator:
             bits.append(f"The message is written by {who}")
         if about:
             bits.append(f"About the sender / what they offer: {about}")
+        if talking:
+            bits.append(f"Key context / talking points to weave in naturally when relevant: {talking}")
         if not bits:
             return ""
         return " Sender details — " + ". ".join(bits) + "."
