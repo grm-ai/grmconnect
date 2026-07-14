@@ -42,7 +42,7 @@
   const isSN = href.includes('/sales/');
 
   // Wait for page JS (Ember/React) to render
-  await sleep(isSN ? 5000 : 3000);
+  await sleep(isSN ? 6000 : 3000);
 
   // Click "Show new results" if present (Sales Nav cached state)
   const showNewBtn = [...document.querySelectorAll('button, [role="button"]')]
@@ -52,6 +52,11 @@
   // Extract profiles
   let profiles;
   if (isSN) {
+    // Every SN page has 25 results, but after a page-2+ reload the list can be slow to paint —
+    // extracting too early is what captured only 3-8 of 25. Wait for the cards to actually render,
+    // then let a couple of rows mount, before scrolling & extracting.
+    await waitForSelector('a[data-control-name="view_lead_panel_via_search_lead_name"]', 15000);
+    await sleep(2000);
     profiles = await extractWhileScrolling(job.max_profiles);
   } else {
     // Regular LinkedIn search lazy-renders result cards as you scroll — scroll the whole
@@ -292,8 +297,11 @@ async function extractWhileScrolling(maxProfiles) {
 
     if (isAtBottom()) {
       atBottomWait++;
-      if (atBottomWait >= 5) { console.log('[LeadPilot] Truly at bottom after', atBottomWait, 'waits'); break; }
-      console.log('[LeadPilot] At bottom, waiting for virtual scroll...', atBottomWait);
+      // Be extra patient while the page is still short of a full SN page (25) — the virtual list
+      // often pauses before mounting the remaining rows. Give up only after many stable waits.
+      const bottomLimit = all.length < 25 ? 12 : 6;
+      if (atBottomWait >= bottomLimit) { console.log('[LeadPilot] Truly at bottom after', atBottomWait, 'waits (got', all.length + ')'); break; }
+      console.log('[LeadPilot] At bottom, waiting for virtual scroll...', atBottomWait, '| got', all.length);
       await sleep(2200);
     } else {
       atBottomWait = 0;
