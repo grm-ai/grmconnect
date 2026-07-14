@@ -5,6 +5,10 @@ import asyncio
 from app.config import settings
 from app.logger import app_logger
 
+# Remembers the first Gemini model that actually generated in this process, so we don't re-probe
+# unavailable models on every request (model availability differs per environment/region).
+_WORKING_GEMINI_MODEL: str | None = None
+
 
 class AIGenerator:
     """
@@ -48,13 +52,23 @@ class AIGenerator:
         anthropic_key = _resolve("anthropic_api_key")
 
         # ── Gemini (primary) ──────────────────────────────────────────────────
+        # Model availability varies by environment/region (some models 404 "not available to new
+        # users" on the server even though they work elsewhere), so we try an ordered list of
+        # candidates at call time and use the first that works — instead of pinning one model.
         if gemini_key:
             try:
                 import google.generativeai as genai
                 genai.configure(api_key=gemini_key)
-                model_name = getattr(settings, "gemini_model", "") or "gemini-2.5-flash"
-                self._gemini = genai.GenerativeModel(model_name)
-                app_logger.info("AIGenerator: Gemini ready (model=%s)", model_name)
+                self._genai = genai
+                self._gemini = True  # marker: Gemini is available (actual model chosen in _call_gemini)
+                env_model = (getattr(settings, "gemini_model", "") or "").strip()
+                candidates = ([env_model] if env_model else []) + [
+                    "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash-lite",
+                    "gemini-flash-lite-latest", "gemini-2.5-flash-lite",
+                ]
+                seen: set[str] = set()
+                self._gemini_models = [m for m in candidates if m and not (m in seen or seen.add(m))]
+                app_logger.info("AIGenerator: Gemini ready (models=%s)", self._gemini_models)
             except ImportError:
                 app_logger.warning(
                     "google-generativeai not installed — run: pip install google-generativeai"
@@ -265,16 +279,35 @@ class AIGenerator:
         return ""
 
     async def _call_gemini(self, prompt: str) -> str:
+        global _WORKING_GEMINI_MODEL
         loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            None,
-            lambda: self._gemini.generate_content(prompt),
-        )
-        text = response.text.strip()
-        # Strip any markdown wrapping Gemini sometimes adds
-        if text.startswith('"') and text.endswith('"'):
-            text = text[1:-1]
-        return text[:300]
+        # Try a model we already confirmed works this process first, then the rest.
+        models = list(self._gemini_models)
+        if _WORKING_GEMINI_MODEL and _WORKING_GEMINI_MODEL in models:
+            models = [_WORKING_GEMINI_MODEL] + [m for m in models if m != _WORKING_GEMINI_MODEL]
+
+        last_exc: Exception | None = None
+        for name in models:
+            try:
+                model = self._genai.GenerativeModel(name)
+                response = await loop.run_in_executor(None, lambda: model.generate_content(prompt))
+                text = (response.text or "").strip()
+                if text:
+                    _WORKING_GEMINI_MODEL = name  # cache the winner for later calls
+                    if text.startswith('"') and text.endswith('"'):
+                        text = text[1:-1]
+                    return text[:300]
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                msg = str(exc).lower()
+                # Model unavailable → try the next candidate. Quota/network → stop and surface it.
+                if "404" in msg or "not found" in msg or "not available" in msg or "not supported" in msg:
+                    app_logger.warning("Gemini model %s unavailable, trying next: %s", name, str(exc)[:140])
+                    continue
+                raise
+        if last_exc:
+            raise last_exc
+        return ""
 
     async def _call_anthropic(self, prompt: str) -> str:
         loop = asyncio.get_event_loop()
