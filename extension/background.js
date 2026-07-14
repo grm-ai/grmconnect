@@ -1575,7 +1575,14 @@ async function clickConnectButton(tabId, profileUrl, note, leadEmail) {
       func: () => {
         const canon = document.querySelector('link[rel="canonical"]')?.href || location.href || '';
         const name = (document.querySelector('h1')?.textContent || '').trim().replace(/\s+/g, ' ');
-        return { canonical: canon, name };
+        // Is this person already a 1st-degree connection? The profile top card shows a distance
+        // badge ("1st") + the accessible label "1st degree connection". The first dist-value in the
+        // DOM is the profile owner's (sidebar cards come later).
+        const distEl = document.querySelector('.dist-value, [class*="dist-value"], .distance-badge .visually-hidden');
+        const distTxt = (distEl?.textContent || '').trim().toLowerCase();
+        const topHtml = (document.querySelector('h1')?.closest('section, .ph5, .mt2, main') || document.body).innerHTML || '';
+        const connected = /^1st\b/.test(distTxt) || /1st degree connection/i.test(topHtml.slice(0, 20000));
+        return { canonical: canon, name, connected };
       },
     });
     const prof = res?.result;
@@ -1587,7 +1594,10 @@ async function clickConnectButton(tabId, profileUrl, note, leadEmail) {
         linkedin_url: realUrl || profileUrl,
         name: prof.name || undefined,
       }).catch(() => {});
-      console.log('[LeadPilot BG] Captured real profile:', prof.name, '|', realUrl || '(no vanity)');
+      console.log('[LeadPilot BG] Captured real profile:', prof.name, '| connected:', prof.connected, '|', realUrl || '(no vanity)');
+      // Already connected → don't invite; report so the backend marks the lead ACCEPTED. This is the
+      // fix for SN leads (fsd-id URLs) whose API path skips the network-distance check.
+      if (prof.connected) return { success: false, already_connected: true, error: 'already_connected' };
     }
   } catch (e) { console.warn('[LeadPilot BG] profile capture failed:', e?.message ?? e); }
 
