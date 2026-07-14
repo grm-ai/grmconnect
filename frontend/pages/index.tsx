@@ -5,6 +5,7 @@ import {
   Zap, Sparkles, Bot, CalendarCheck, BarChart3, Users, ArrowRight,
   MessageSquareText, ShieldCheck, Rocket, Download, Chrome,
 } from 'lucide-react'
+import { Logo } from '../src/components/Logo'
 import { isAuthed } from '../src/lib/auth'
 
 const FEATURES = [
@@ -32,9 +33,7 @@ export default function Home() {
       <header className="sticky top-0 z-30 backdrop-blur-md bg-background/70 border-b border-border">
         <div className="max-w-6xl mx-auto px-5 h-16 flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl gradient-brand flex items-center justify-center shadow-sm">
-              <Zap className="w-4 h-4 text-white" strokeWidth={2.5} />
-            </div>
+            <Logo className="w-8 h-8 shadow-sm border border-border" rounded="rounded-xl" />
             <span className="font-bold text-base gradient-text">GRM Connect</span>
           </div>
           <nav className="ml-auto flex items-center gap-2">
@@ -170,7 +169,7 @@ export default function Home() {
       <footer className="border-t border-border">
         <div className="max-w-6xl mx-auto px-5 py-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg gradient-brand flex items-center justify-center"><Zap className="w-3 h-3 text-white" /></div>
+            <Logo className="w-6 h-6 border border-border" rounded="rounded-lg" />
             <span className="font-semibold text-foreground">GRM Connect</span>
           </div>
           <p>© {new Date().getFullYear()} GRM Connect. Built for founders who’d rather be on calls.</p>

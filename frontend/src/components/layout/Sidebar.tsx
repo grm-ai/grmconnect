@@ -8,6 +8,7 @@ import {
   Inbox, ChevronDown, Search,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
+import { Logo } from '../Logo'
 import { useUIStore } from '../../store/ui-store'
 import { useLinkedInSession } from '../../hooks/useLinkedIn'
 import { useLeads } from '../../hooks/useLeads'
@@ -100,9 +101,7 @@ export function Sidebar() {
     >
       {/* ── Logo ─────────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2.5 px-4 h-[56px] shrink-0 border-b border-slate-200/60 dark:border-white/[0.06]">
-        <div className="flex items-center justify-center w-7 h-7 rounded-lg gradient-brand shrink-0 shadow-sm">
-          <Zap className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
-        </div>
+        <Logo className="w-7 h-7 shrink-0 shadow-sm border border-border" rounded="rounded-lg" />
         <AnimatePresence>
           {!sidebarCollapsed && (
             <motion.span

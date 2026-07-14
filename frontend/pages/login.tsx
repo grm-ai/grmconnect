@@ -7,6 +7,7 @@ import { Sparkles, Mail, Lock, Loader2, Eye, EyeOff } from 'lucide-react'
 import { Button } from '../src/components/ui/button'
 import { Input } from '../src/components/ui/input'
 import { Label } from '../src/components/ui/label'
+import { Logo } from '../src/components/Logo'
 import { apiLogin, setAuth } from '../src/lib/auth'
 import { toast } from 'sonner'
 
@@ -43,9 +44,7 @@ export default function LoginPage() {
         className="w-full max-w-sm"
       >
         <div className="text-center mb-6">
-          <div className="w-12 h-12 rounded-2xl gradient-brand mx-auto flex items-center justify-center mb-3">
-            <Sparkles className="w-6 h-6 text-white" />
-          </div>
+          <Logo className="w-16 h-16 mx-auto mb-3 shadow-sm border border-border" rounded="rounded-2xl" />
           <h1 className="text-xl font-bold">Welcome to GRM Connect</h1>
           <p className="text-sm text-muted-foreground mt-1">Log in to your workspace</p>
         </div>
