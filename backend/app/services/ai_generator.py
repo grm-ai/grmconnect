@@ -17,6 +17,9 @@ class AIGenerator:
     def __init__(self, sender: dict | None = None) -> None:
         self._gemini = None
         self._anthropic = None
+        # Set whenever a real AI call fails / no key is configured, so callers can surface WHY
+        # a fallback template was used (invalid key, quota, network, etc.) instead of failing silently.
+        self.last_error: str | None = None
 
         # Sender profile ("About You") — injected into every prompt so generated messages use the
         # user's real identity. Per-user profile is passed in; falls back to the global file for
@@ -237,18 +240,25 @@ class AIGenerator:
         )
 
     async def _call(self, prompt: str) -> str:
+        if not self._gemini and not self._anthropic:
+            self.last_error = "No AI API key configured — add a Gemini key in Settings → API Keys."
+            return ""
+
         if self._gemini:
             try:
                 result = await self._call_gemini(prompt)
                 if result:
                     return result
+                self.last_error = "Gemini returned an empty response."
             except Exception as exc:
+                self.last_error = f"Gemini error: {str(exc)[:300]}"
                 app_logger.warning("Gemini call failed, trying Anthropic: %s", exc)
 
         if self._anthropic:
             try:
                 return await self._call_anthropic(prompt)
             except Exception as exc:
+                self.last_error = f"Anthropic error: {str(exc)[:300]}"
                 app_logger.error("Anthropic call failed: %s", exc)
 
         return ""

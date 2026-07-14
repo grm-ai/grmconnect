@@ -32,6 +32,7 @@ class GenerateRequest(BaseModel):
 class GenerateResponse(BaseModel):
     message: str
     tokens_used: int = 0
+    warning: str = ""   # non-empty when a fallback template was used (why the AI didn't generate)
 
 
 @router.post("/generate", response_model=ApiResponse[GenerateResponse])
@@ -80,4 +81,4 @@ async def generate_message(
             purpose=purpose,
         )
 
-    return ApiResponse(data=GenerateResponse(message=text or ""))
+    return ApiResponse(data=GenerateResponse(message=text or "", warning=ai.last_error or ""))

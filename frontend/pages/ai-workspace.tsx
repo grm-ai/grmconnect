@@ -63,7 +63,8 @@ export default function AIWorkspacePage() {
       existing_message: needsExisting ? result : undefined,
     })
     setResult(res.message)
-    toast.success('Generated!')
+    if (res.warning) toast.error(`AI used a fallback template — ${res.warning}`, { duration: 8000 })
+    else toast.success('Generated!')
   }
 
   function handleCopy() {

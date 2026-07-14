@@ -19,7 +19,7 @@ async function api<T>(method: string, path: string, body?: unknown): Promise<T> 
 export function useGenerateAI() {
   return useMutation({
     mutationFn: async (req: AIRequest): Promise<AIResponse> => {
-      const res = await api<{ data: { message: string; tokens_used: number } }>(
+      const res = await api<{ data: { message: string; tokens_used: number; warning?: string } }>(
         'POST', '/ai/generate', {
           action:           req.action,
           lead_name:        req.lead?.name,
@@ -33,6 +33,7 @@ export function useGenerateAI() {
       )
       return {
         message:      res.data?.message      ?? '',
+        warning:      res.data?.warning      ?? '',
         subject:      req.action === 'generate'
           ? `Quick question about ${req.lead?.company ?? 'your team'}`
           : undefined,

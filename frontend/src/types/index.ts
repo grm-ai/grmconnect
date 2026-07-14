@@ -130,6 +130,7 @@ export interface AIResponse {
   message: string
   subject?: string
   tokens_used: number
+  warning?: string
 }
 
 // ── Lead Intelligence ─────────────────────────────────────────────────────────
