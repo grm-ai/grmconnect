@@ -9,7 +9,7 @@ import { cn } from '../lib/utils'
 export function Logo({
   className,
   rounded = 'rounded-lg',
-  zoom = 2.7,
+  zoom = 1.35,
   bare = false,
 }: {
   className?: string
