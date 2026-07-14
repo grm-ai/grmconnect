@@ -64,6 +64,7 @@ class CampaignEngine:
                             )
 
                         action = Action(
+                            user_id=campaign.user_id,   # keep actions owned by the campaign's user
                             campaign_id=campaign.id,
                             lead_id=lead.id,
                             action_type=step.action_type,

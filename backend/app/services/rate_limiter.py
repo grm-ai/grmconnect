@@ -49,7 +49,7 @@ class RateLimiter:
         except Exception:
             return None
 
-    async def _count_from_db(self, db: "AsyncSession", campaign_id: int | None, action_type: str) -> int:
+    async def _count_from_db(self, db: "AsyncSession", campaign_id: int | None, action_type: str, user_id: int | None = None) -> int:
         from sqlalchemy import select, func
         from app.models import Action, ActionStatus, ActionType
 
@@ -66,17 +66,19 @@ class RateLimiter:
         )
         if campaign_id:
             q = q.where(Action.campaign_id == campaign_id)
+        if user_id is not None:
+            q = q.where(Action.user_id == user_id)   # per-user daily cap — never count other users' actions
         result = await db.execute(q)
         return result.scalar_one() or 0
 
-    async def check_global_connect_limit(self, db: "AsyncSession") -> tuple[bool, int, int]:
+    async def check_global_connect_limit(self, db: "AsyncSession", user_id: int | None = None) -> tuple[bool, int, int]:
         """Returns (allowed, used_today, limit)."""
         limit = settings.daily_connect_limit
-        used = await self._count_from_db(db, None, "CONNECT")
-        app_logger.debug("Global CONNECT today: %d / %d", used, limit)
+        used = await self._count_from_db(db, None, "CONNECT", user_id=user_id)
+        app_logger.debug("CONNECT today (user=%s): %d / %d", user_id, used, limit)
         return used < limit, used, limit
 
-    async def check_campaign_limit(self, db: "AsyncSession", campaign_id: int, action_type: str = "CONNECT") -> tuple[bool, int, int]:
+    async def check_campaign_limit(self, db: "AsyncSession", campaign_id: int, action_type: str = "CONNECT", user_id: int | None = None) -> tuple[bool, int, int]:
         """Returns (allowed, used_today, campaign_daily_limit)."""
         from sqlalchemy import select
         from app.models import Campaign
@@ -87,21 +89,23 @@ class RateLimiter:
             return False, 0, 0
 
         limit = campaign.daily_limit
-        used  = await self._count_from_db(db, campaign_id, action_type)
+        used  = await self._count_from_db(db, campaign_id, action_type, user_id=user_id)
         app_logger.debug("Campaign %d %s today: %d / %d", campaign_id, action_type, used, limit)
         return used < limit, used, limit
 
-    async def get_today_stats(self, db: "AsyncSession") -> dict:
+    async def get_today_stats(self, db: "AsyncSession", user_id: int | None = None) -> dict:
         """Return full today's usage stats."""
         from sqlalchemy import select, func
         from app.models import Action, ActionStatus, ActionType
 
         start, _ = _today_window()
-        result = await db.execute(
+        q = (
             select(Action.action_type, func.count())
             .where(Action.status == ActionStatus.SUCCESS, Action.executed_at >= start)
-            .group_by(Action.action_type)
         )
+        if user_id is not None:
+            q = q.where(Action.user_id == user_id)
+        result = await db.execute(q.group_by(Action.action_type))
         rows = result.all()
         counts = {row[0].value if hasattr(row[0], 'value') else row[0]: row[1] for row in rows}
         return {
@@ -120,7 +124,7 @@ class RateLimiter:
 class RateLimiterSync:
     """Synchronous rate limiter for use in dev runner background tasks."""
 
-    def _count_from_db(self, db: "Session", campaign_id: int | None, action_type: str) -> int:
+    def _count_from_db(self, db: "Session", campaign_id: int | None, action_type: str, user_id: int | None = None) -> int:
         from sqlalchemy import select, func
         from app.models import Action, ActionStatus
 
@@ -137,6 +141,8 @@ class RateLimiterSync:
         )
         if campaign_id:
             q = q.where(Action.campaign_id == campaign_id)
+        if user_id is not None:
+            q = q.where(Action.user_id == user_id)
         return db.execute(q).scalar_one() or 0
 
     def check_campaign_limit(self, campaign_id: int, db: "Session | None" = None) -> bool:
@@ -150,9 +156,9 @@ class RateLimiterSync:
             campaign = db.get(Campaign, campaign_id)
             if not campaign:
                 return False
-            used = self._count_from_db(db, campaign_id, "CONNECT")
-            # Also check global limit
-            global_used = self._count_from_db(db, None, "CONNECT")
+            used = self._count_from_db(db, campaign_id, "CONNECT", user_id=campaign.user_id)
+            # Also check the owner's (per-user) daily limit — NOT a cross-tenant global count
+            global_used = self._count_from_db(db, None, "CONNECT", user_id=campaign.user_id)
             if global_used >= settings.daily_connect_limit:
                 app_logger.info(
                     "Global CONNECT limit reached (%d/%d) — blocking campaign %d",

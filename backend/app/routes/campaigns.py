@@ -262,8 +262,8 @@ async def campaign_due_actions(
     from app.config import settings as _cfg
     from app.services.rate_limiter import RateLimiter
     _rl = RateLimiter()
-    connect_used = await _rl._count_from_db(db, None, "CONNECT")
-    msg_used = (await _rl._count_from_db(db, None, "MESSAGE")) + (await _rl._count_from_db(db, None, "FOLLOWUP"))
+    connect_used = await _rl._count_from_db(db, None, "CONNECT", user_id=user.id)
+    msg_used = (await _rl._count_from_db(db, None, "MESSAGE", user_id=user.id)) + (await _rl._count_from_db(db, None, "FOLLOWUP", user_id=user.id))
     connect_remaining = max(0, _cfg.daily_connect_limit - connect_used)
     msg_remaining = max(0, _cfg.daily_message_limit - msg_used)
 
@@ -544,7 +544,7 @@ async def campaign_autopilot_pending(
     from app.config import settings as _cfg
     from app.services.rate_limiter import RateLimiter
     _rl = RateLimiter()
-    msg_used = (await _rl._count_from_db(db, None, "MESSAGE")) + (await _rl._count_from_db(db, None, "FOLLOWUP"))
+    msg_used = (await _rl._count_from_db(db, None, "MESSAGE", user_id=user.id)) + (await _rl._count_from_db(db, None, "FOLLOWUP", user_id=user.id))
     msg_remaining = max(0, _cfg.daily_message_limit - msg_used)
 
     ai = AIGenerator(sender={

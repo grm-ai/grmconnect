@@ -849,7 +849,7 @@ async def get_limits(
     user: User = Depends(get_current_user),
 ) -> ApiResponse[LimitsOut]:
     from app.services.rate_limiter import RateLimiter
-    stats = await RateLimiter().get_today_stats(db)
+    stats = await RateLimiter().get_today_stats(db, user_id=user.id)
     return ApiResponse(data=LimitsOut(**stats))
 
 

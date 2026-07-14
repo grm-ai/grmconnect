@@ -295,6 +295,7 @@ async def _run_scrape_job(job_id: str, url: str, max_profiles: int, storage_stat
             # Add to summary log
             _scrape_log.insert(0, {
                 "job_id": job_id,
+                "user_id": _scrape_jobs[job_id].get("user_id"),
                 "url": url,
                 "profiles_found": len(final),
                 "pages_scraped": result.get("pages_scraped", 0),
@@ -323,7 +324,7 @@ async def _run_scrape_job(job_id: str, url: str, max_profiles: int, storage_stat
 async def start_scrape_job(
     body: StartScrapeRequest,
     db: AsyncSession = Depends(get_db),
-    _: str = require_auth,
+    user: User = Depends(get_current_user),
 ) -> ApiResponse[dict]:
     """
     Start an async scrape job. Returns job_id immediately.
@@ -334,6 +335,7 @@ async def start_scrape_job(
 
     _scrape_jobs[job_id] = {
         "job_id": job_id,
+        "user_id": user.id,           # owner — other users can't read this job
         "status": "pending",
         "source": "extension",        # Processed by the Chrome extension, not a backend browser
         "progress_profiles": 0,
@@ -357,13 +359,12 @@ async def start_scrape_job(
 @router.get("/status/{job_id}", response_model=ApiResponse[AsyncJobStatus])
 async def get_scrape_job_status(
     job_id: str,
-    _: str = require_auth,
+    user: User = Depends(get_current_user),
 ) -> ApiResponse[AsyncJobStatus]:
     """Poll an async scrape job for current progress and partial profile list."""
-    if job_id not in _scrape_jobs:
+    job = _scrape_jobs.get(job_id)
+    if not job or job.get("user_id") not in (None, user.id):
         raise HTTPException(status_code=404, detail=f"Scrape job '{job_id}' not found.")
-
-    job = _scrape_jobs[job_id]
 
     # Safely convert raw dicts to ScrapedProfile (partial data may lack some fields)
     profiles: list[ScrapedProfile] = []
@@ -400,7 +401,7 @@ async def get_scrape_job_status(
 async def preview_scrape(
     body: ScrapeRequest,
     db: AsyncSession = Depends(get_db),
-    _: str = require_auth,
+    user: User = Depends(get_current_user),
 ) -> ApiResponse[ScrapeResult]:
     """
     Sync scrape — waits for completion and returns the full result.
@@ -432,7 +433,7 @@ async def preview_scrape(
         scraped_at=datetime.now(timezone.utc).isoformat(),
     )
 
-    _scrape_log.insert(0, result.model_dump())
+    _scrape_log.insert(0, {**result.model_dump(), "user_id": user.id})
     if len(_scrape_log) > 20:
         _scrape_log.pop()
 
@@ -516,9 +517,9 @@ async def import_profiles(
 
 @router.get("/jobs", response_model=ApiResponse[list[dict]])
 async def list_scrape_jobs(
-    _: str = require_auth,
+    user: User = Depends(get_current_user),
 ) -> ApiResponse[list[dict]]:
-    """Return the last 20 scrape job summaries."""
+    """Return the current user's last 20 scrape job summaries."""
     summary = [
         {
             "job_id": j["job_id"],
@@ -528,6 +529,7 @@ async def list_scrape_jobs(
             "scraped_at": j["scraped_at"],
         }
         for j in _scrape_log
+        if j.get("user_id") == user.id
     ]
     return ApiResponse(data=summary, message=f"{len(summary)} recent scrape jobs")
 
@@ -689,7 +691,7 @@ async def _run_connect_job(
 async def start_connect_job(
     body: ConnectRequest,
     db: AsyncSession = Depends(get_db),
-    _: str = require_auth,
+    user: User = Depends(get_current_user),
 ) -> ApiResponse[dict]:
     """
     Start an async job that sends AI-personalized connection requests to the given profiles.
@@ -705,6 +707,7 @@ async def start_connect_job(
 
     _connect_jobs[job_id] = {
         "job_id": job_id,
+        "user_id": user.id,
         "status": "pending",
         "total": len(profiles_to_connect),
         "sent": 0,
@@ -734,13 +737,12 @@ async def start_connect_job(
 @router.get("/connect-status/{job_id}", response_model=ApiResponse[ConnectJobStatusModel])
 async def get_connect_job_status(
     job_id: str,
-    _: str = require_auth,
+    user: User = Depends(get_current_user),
 ) -> ApiResponse[ConnectJobStatusModel]:
     """Poll an active connection job for live progress and per-profile results."""
-    if job_id not in _connect_jobs:
+    job = _connect_jobs.get(job_id)
+    if not job or job.get("user_id") not in (None, user.id):
         raise HTTPException(status_code=404, detail=f"Connect job '{job_id}' not found.")
-
-    job = _connect_jobs[job_id]
     status_obj = ConnectJobStatusModel(
         job_id=job_id,
         status=job["status"],
@@ -821,6 +823,7 @@ async def extension_update(body: ExtensionUpdate) -> ApiResponse[dict]:
         # Add to completed log
         _scrape_log.insert(0, {
             "job_id": body.job_id,
+            "user_id": job.get("user_id"),
             "url": job["url"],
             "profiles_found": len(job["profiles"]),
             "pages_scraped": job.get("progress_pages", 0),

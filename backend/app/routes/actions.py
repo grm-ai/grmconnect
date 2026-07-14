@@ -6,9 +6,10 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_db, require_auth
+from app.dependencies import get_db
+from app.security import get_current_user
 from app.exceptions import ActionNotFoundError, BadRequestError
-from app.models import Action, ActionStatus
+from app.models import Action, ActionStatus, User
 from app.schemas import (
     ActionCreate,
     ActionOut,
@@ -26,9 +27,9 @@ router = APIRouter(prefix="/actions", tags=["Actions"])
 async def create_action(
     body: ActionCreate,
     db: AsyncSession = Depends(get_db),
-    _: str = require_auth,
+    user: User = Depends(get_current_user),
 ) -> ApiResponse[ActionOut]:
-    action = Action(**body.model_dump())
+    action = Action(**body.model_dump(), user_id=user.id)
     db.add(action)
     await db.flush()
     await db.refresh(action)
@@ -43,9 +44,9 @@ async def list_actions(
     campaign_id: int | None = Query(None),
     lead_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _: str = require_auth,
+    user: User = Depends(get_current_user),
 ) -> PaginatedResponse[ActionOut]:
-    q = select(Action)
+    q = select(Action).where(Action.user_id == user.id)
     if status_filter:
         q = q.where(Action.status == status_filter)
     if campaign_id:
@@ -67,15 +68,21 @@ async def list_actions(
     )
 
 
+async def _get_own_action(db: AsyncSession, action_id: int, user: User) -> Action:
+    """Fetch an action, but only if it belongs to the current user (else 404 — no cross-tenant peeking)."""
+    action = await db.get(Action, action_id)
+    if not action or action.user_id != user.id:
+        raise ActionNotFoundError()
+    return action
+
+
 @router.get("/{action_id}", response_model=ApiResponse[ActionOut])
 async def get_action(
     action_id: int,
     db: AsyncSession = Depends(get_db),
-    _: str = require_auth,
+    user: User = Depends(get_current_user),
 ) -> ApiResponse[ActionOut]:
-    action = await db.get(Action, action_id)
-    if not action:
-        raise ActionNotFoundError()
+    action = await _get_own_action(db, action_id, user)
     return ApiResponse(data=ActionOut.model_validate(action))
 
 
@@ -83,11 +90,9 @@ async def get_action(
 async def delete_action(
     action_id: int,
     db: AsyncSession = Depends(get_db),
-    _: str = require_auth,
+    user: User = Depends(get_current_user),
 ) -> ApiResponse[None]:
-    action = await db.get(Action, action_id)
-    if not action:
-        raise ActionNotFoundError()
+    action = await _get_own_action(db, action_id, user)
     await db.delete(action)
     return ApiResponse(message="Action deleted.")
 
@@ -98,14 +103,14 @@ async def delete_action(
 async def queue_actions(
     body: ActionQueueRequest,
     db: AsyncSession = Depends(get_db),
-    _: str = require_auth,
+    user: User = Depends(get_current_user),
 ) -> ApiResponse[dict]:
     from app.tasks import execute_action_task
 
     queued = []
     for action_id in body.action_ids:
         action = await db.get(Action, action_id)
-        if not action:
+        if not action or action.user_id != user.id:
             continue
         if action.status not in (ActionStatus.PENDING, ActionStatus.FAILED):
             continue
@@ -123,13 +128,11 @@ async def queue_actions(
 async def retry_action(
     action_id: int,
     db: AsyncSession = Depends(get_db),
-    _: str = require_auth,
+    user: User = Depends(get_current_user),
 ) -> ApiResponse[dict]:
     from app.tasks import execute_action_task
 
-    action = await db.get(Action, action_id)
-    if not action:
-        raise ActionNotFoundError()
+    action = await _get_own_action(db, action_id, user)
     if action.status not in (ActionStatus.FAILED, ActionStatus.CANCELLED):
         raise BadRequestError(f"Cannot retry action in status {action.status!r}")
 
@@ -146,11 +149,9 @@ async def retry_action(
 async def cancel_action(
     action_id: int,
     db: AsyncSession = Depends(get_db),
-    _: str = require_auth,
+    user: User = Depends(get_current_user),
 ) -> ApiResponse[None]:
-    action = await db.get(Action, action_id)
-    if not action:
-        raise ActionNotFoundError()
+    action = await _get_own_action(db, action_id, user)
     if action.status in (ActionStatus.SUCCESS, ActionStatus.RUNNING):
         raise BadRequestError(f"Cannot cancel action in status {action.status!r}")
 
@@ -162,11 +163,9 @@ async def cancel_action(
 async def get_action_logs(
     action_id: int,
     db: AsyncSession = Depends(get_db),
-    _: str = require_auth,
+    user: User = Depends(get_current_user),
 ) -> ApiResponse[dict]:
-    action = await db.get(Action, action_id)
-    if not action:
-        raise ActionNotFoundError()
+    action = await _get_own_action(db, action_id, user)
     return ApiResponse(
         data={
             "action_id": action_id,
