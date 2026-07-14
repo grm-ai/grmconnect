@@ -40,8 +40,8 @@ _origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins or ["*"],
-    # allow any Chrome extension + any Vercel deployment (production & preview URLs)
-    allow_origin_regex=r"chrome-extension://.*|https://[a-z0-9-]+\.vercel\.app",
+    # allow any Chrome extension + any Vercel deployment + the grmconnect.com domain
+    allow_origin_regex=r"chrome-extension://.*|https://[a-z0-9-]+\.vercel\.app|https://(www\.)?grmconnect\.com",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
