@@ -49,91 +49,71 @@
     .find(b => /show.*(new|updated).*result/i.test(b.innerText ?? ''));
   if (showNewBtn) { console.log('[LeadPilot] Clicking show-new-results'); showNewBtn.click(); await sleep(3000); }
 
-  // Extract profiles
-  let profiles;
-  if (isSN) {
-    // Every SN page has 25 results, but after a page-2+ reload the list can be slow to paint —
-    // extracting too early is what captured only 3-8 of 25. Wait for the cards to actually render,
-    // then let a couple of rows mount, before scrolling & extracting.
-    await waitForSelector('a[data-control-name="view_lead_panel_via_search_lead_name"]', 15000);
-    await sleep(2000);
-    profiles = await extractWhileScrolling(job.max_profiles);
-  } else {
-    // Regular LinkedIn search lazy-renders result cards as you scroll — scroll the whole
-    // page down a few times so all ~10 rows mount, then extract. Without this only the
-    // first few visible cards are captured.
-    for (let i = 0; i < 8; i++) { window.scrollBy(0, 900); await sleep(500); }
-    window.scrollTo(0, 0); await sleep(400);
-    profiles = extractProfiles();
-  }
-  const newPage  = (job.page  || 0) + 1;
-  const newTotal = (job.total || 0) + profiles.length;
-  console.log('[LeadPilot] Extracted', profiles.length, 'profiles. Page:', newPage, 'Total:', newTotal);
+  // Scrape ALL pages within THIS single content-script run — do NOT reload between pages.
+  // A reload re-triggered Sales Navigator's slow lazy-load and captured only part of the 25;
+  // clicking "Next" keeps the already-loaded SPA, and SN paints the next 25 exactly the way it
+  // did for page 1 (which is why page 1 always worked and reloaded pages 2+ didn't).
+  const cardSel = 'a[data-control-name="view_lead_panel_via_search_lead_name"]';
+  let pageNum    = job.page  || 0;
+  let totalSoFar = job.total || 0;
 
-  // Send to background → backend (with 20s timeout — SW can be terminated mid-fetch)
-  let isDone = false;
-  try {
-    const resp = await Promise.race([
-      chrome.runtime.sendMessage({ type: 'PAGE_SCRAPED', job_id: job.job_id, profiles, page: newPage, total: newTotal, max: job.max_profiles }),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('PAGE_SCRAPED timeout')), 20000)),
-    ]);
-    isDone = resp?.done === true;
-    console.log('[LeadPilot] PAGE_SCRAPED response: done=', isDone);
-  } catch (e) {
-    console.warn('[LeadPilot] PAGE_SCRAPED fallback (timeout or SW restart):', e?.message ?? e);
-    isDone = false; // assume not done — continue to next page
-  }
-
-  // Background already updated session storage in handlePageScraped
-  // Content script does NOT touch chrome.storage.session (unreliable from content scripts)
-
-  if (isDone || newTotal >= job.max_profiles || profiles.length === 0) {
-    console.log('[LeadPilot] All done. Total:', newTotal);
-    try { await Promise.race([
-      chrome.runtime.sendMessage({ type: 'SCRAPE_DONE', job_id: job.job_id }),
-      new Promise((_, r) => setTimeout(r, 5000)),
-    ]); } catch (_) {}
-    window.close();
-    return;
-  }
-
-  // Navigate to next page
-  await sleep(1000 + rand(800));
-  const nextBtn = findNextBtn();
-  console.log('[LeadPilot] Next button found:', !!nextBtn, nextBtn?.innerText?.trim());
-
-  if (nextBtn) {
-    const prevUrl = location.href;
-    nextBtn.click();  // Let Sales Nav / LinkedIn handle pagination (cursor/session params)
-    console.log('[LeadPilot] Clicked Next, waiting for URL change...');
-
-    // Wait up to 6s for SPA to update URL
-    let urlChanged = false;
-    for (let i = 0; i < 12; i++) {
-      await sleep(500);
-      if (location.href !== prevUrl) { urlChanged = true; break; }
-    }
-
-    if (urlChanged) {
-      console.log('[LeadPilot] URL changed to:', location.href.slice(0, 80));
-      await sleep(500);
-      location.reload();  // Force full reload so content script re-runs on new page
+  while (totalSoFar < job.max_profiles) {
+    let profiles;
+    if (isSN) {
+      // Wait for THIS page's cards to render before scrolling & extracting.
+      await waitForSelector(cardSel, 15000);
+      await sleep(2000);
+      profiles = await extractWhileScrolling(job.max_profiles - totalSoFar);
     } else {
-      // URL didn't change — try incrementing ?page= param directly
-      const nextUrl = new URL(location.href);
-      const curPage = parseInt(nextUrl.searchParams.get('page') || '1');
-      nextUrl.searchParams.set('page', String(curPage + 1));
-      console.log('[LeadPilot] URL unchanged, forcing page', curPage + 1);
-      location.href = nextUrl.toString();
+      // Regular LinkedIn search lazy-renders as you scroll — scroll down so all rows mount.
+      for (let i = 0; i < 8; i++) { window.scrollBy(0, 900); await sleep(500); }
+      window.scrollTo(0, 0); await sleep(400);
+      profiles = extractProfiles();
     }
-  } else {
-    console.log('[LeadPilot] No Next button — all pages done');
-    try { await Promise.race([
-      chrome.runtime.sendMessage({ type: 'SCRAPE_DONE', job_id: job.job_id }),
-      new Promise((_, r) => setTimeout(r, 5000)),
-    ]); } catch (_) {}
-    window.close();
+
+    pageNum++;
+    totalSoFar += profiles.length;
+    console.log('[LeadPilot] Extracted', profiles.length, 'profiles. Page:', pageNum, 'Total:', totalSoFar);
+
+    let isDone = false;
+    try {
+      const resp = await Promise.race([
+        chrome.runtime.sendMessage({ type: 'PAGE_SCRAPED', job_id: job.job_id, profiles, page: pageNum, total: totalSoFar, max: job.max_profiles }),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('PAGE_SCRAPED timeout')), 20000)),
+      ]);
+      isDone = resp?.done === true;
+    } catch (e) {
+      console.warn('[LeadPilot] PAGE_SCRAPED fallback:', e?.message ?? e);
+    }
+
+    if (isDone || totalSoFar >= job.max_profiles || profiles.length === 0) {
+      console.log('[LeadPilot] All done. Total:', totalSoFar);
+      break;
+    }
+
+    // Go to the next page IN-PLACE (no reload) and wait for SN to swap in the new 25.
+    const nextBtn = findNextBtn();
+    if (!nextBtn) { console.log('[LeadPilot] No Next button — all pages done'); break; }
+    const beforeHref = document.querySelector(cardSel)?.href || '';
+    console.log('[LeadPilot] Clicking Next (no reload)…');
+    nextBtn.click();
+    // Wait until the first result card changes → the new page has replaced the old one.
+    let changed = false;
+    for (let i = 0; i < 30; i++) {
+      await sleep(500);
+      const nowHref = document.querySelector(cardSel)?.href || '';
+      if (nowHref && nowHref !== beforeHref) { changed = true; break; }
+    }
+    console.log('[LeadPilot] Next page rendered:', changed);
+    if (!changed) { console.log('[LeadPilot] Page did not advance — stopping'); break; }
+    await sleep(2500);   // let the first rows settle before extracting
   }
+
+  try { await Promise.race([
+    chrome.runtime.sendMessage({ type: 'SCRAPE_DONE', job_id: job.job_id }),
+    new Promise((_, r) => setTimeout(r, 5000)),
+  ]); } catch (_) {}
+  window.close();
 })();
 
 
