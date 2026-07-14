@@ -25,7 +25,7 @@ import {
   useOpenBrowser, useBrowserStatus, useCaptureSession, useCloseBrowser,
   useChromeProfiles, useRefreshProfile, type ChromeProfile,
 } from '../src/hooks/useLinkedIn'
-import { MOCK_TEAM } from '../src/lib/mock-data'
+import { getUser, type AuthUser } from '../src/lib/auth'
 import { formatRelativeTime } from '../src/lib/utils'
 import { toast } from 'sonner'
 
@@ -50,6 +50,9 @@ async function saveSettings(body: Record<string, any>): Promise<void> {
 }
 
 export default function SettingsPage() {
+  // The logged-in account (shown on the Team tab as the current member).
+  const [me, setMe] = useState<AuthUser | null>(null)
+  React.useEffect(() => { setMe(getUser()) }, [])
   // ── API key state ─────────────────────────────────────────────────────────
   const [geminiKey,    setGeminiKey]    = useState('')
   const [anthropicKey, setAnthropicKey] = useState('')
@@ -1149,21 +1152,17 @@ export default function SettingsPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
-                {MOCK_TEAM.map(member => (
-                  <div key={member.id} className="flex items-center gap-3">
-                    <Avatar className="w-8 h-8">
-                      <AvatarFallback className="text-xs">{member.name[0]}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium">{member.name}</p>
-                      <p className="text-[11px] text-muted-foreground">{member.email}</p>
-                    </div>
-                    <Badge variant={member.role === 'admin' ? 'default' : member.role === 'member' ? 'secondary' : 'outline'} className="text-[10px] capitalize">{member.role}</Badge>
-                    {member.role !== 'admin' && (
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive"><Trash2 className="w-3.5 h-3.5" /></Button>
-                    )}
+                <div className="flex items-center gap-3">
+                  <Avatar className="w-8 h-8">
+                    <AvatarFallback className="text-xs">{(me?.name || me?.email || 'U')[0].toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate">{me?.name || me?.email || 'You'}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">{me?.email || ''}</p>
                   </div>
-                ))}
+                  <Badge variant="default" className="text-[10px] capitalize">Owner</Badge>
+                </div>
+                <p className="text-[11px] text-muted-foreground pt-1">Team invites are coming soon — for now each person signs up with their own account.</p>
               </CardContent>
             </Card>
           </TabsContent>
