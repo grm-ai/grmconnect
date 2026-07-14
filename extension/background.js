@@ -2874,31 +2874,10 @@ async function handlePageScraped(msg) {
   const isDone = total >= max || profiles.length === 0;
   console.log('[LeadPilot BG] Page', page, '—', profiles.length, 'profiles, total:', total, 'done:', isDone);
 
-  // Auto-resolve Sales Navigator URLs using the EXISTING SN search tab (no new tabs opened)
-  const snProfiles = profiles.filter(p => p.linkedin_url && p.linkedin_url.includes('/sales/lead/'));
-  if (snProfiles.length > 0) {
-    const snTabs = await chrome.tabs.query({ url: 'https://www.linkedin.com/sales/*' });
-    const snTab  = snTabs[0];
-    if (snTab) {
-      console.log('[LeadPilot BG] Resolving', snProfiles.length, 'SN URLs via tab', snTab.id);
-      for (const profile of snProfiles) {                        // sequential, not parallel
-        const snFull = profile.linkedin_url.split('/sales/lead/')[1]?.split('?')[0];
-        if (!snFull) continue;
-        const res = await resolveSNViaTab(snTab.id, snFull);
-        const regularUrl = res && res.url;
-        if (!regularUrl) console.log('[LeadPilot BG] SN resolve FAILED for', profile.name, '— endpoints:', ((res && res.diag) || []).join(', '));
-        if (regularUrl && regularUrl.includes('/in/')) {
-          profile.sales_nav_url = profile.linkedin_url;
-          profile.linkedin_url  = regularUrl;
-          console.log('[LeadPilot BG] Resolved', profile.name, '→', regularUrl);
-          // Post each resolved profile IMMEDIATELY so it shows up live (don't wait for the whole
-          // page — SN resolution is sequential and slow). Backend dedupes by linkedin_url.
-          try { await post('/scrape/extension-update', { job_id, status: 'running', new_profiles: [profile], progress_profiles: total, progress_pages: page }); } catch (_) {}
-        }
-      }
-      console.log('[LeadPilot BG] SN resolution done');
-    }
-  }
+  // NOTE: We deliberately DO NOT resolve Sales Navigator URLs anymore. LinkedIn removed that API
+  // (every endpoint 404s) and the sequential per-profile resolution stalled the fetch and dropped
+  // profiles. All profiles are posted as-is below; the backend normalises /sales/lead/<id> to
+  // /in/<id> and invites still send via that id.
 
   // Background updates session storage (not content script — avoids content script storage hangs)
   try {
