@@ -7,14 +7,17 @@ from typing import Any
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from app.config import settings as app_settings
 from app.models import User
 from app.security import get_current_user
 from app.schemas import ApiResponse
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
-# Settings persisted in sessions/app_settings.json (next to LinkedIn session files)
-_SETTINGS_FILE = Path(__file__).parent.parent.parent / "sessions" / "app_settings.json"
+# Persist app settings (API keys, sender profile) in the SAME dir as LinkedIn sessions — which on
+# Railway is the persistent /data volume (SESSION_DIR). Storing it under the app folder instead
+# would put it inside the container and wipe the saved keys on every redeploy.
+_SETTINGS_FILE = Path(app_settings.session_dir) / "app_settings.json"
 
 
 def _load() -> dict[str, Any]:
