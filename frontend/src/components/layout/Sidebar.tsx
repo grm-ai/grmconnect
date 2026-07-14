@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { Logo } from '../Logo'
+import { getUser, type AuthUser } from '../../lib/auth'
 import { useUIStore } from '../../store/ui-store'
 import { useLinkedInSession } from '../../hooks/useLinkedIn'
 import { useLeads } from '../../hooks/useLeads'
@@ -31,11 +32,15 @@ export function Sidebar() {
   const activeCamps  = campaigns?.filter(c => c.status === 'active').length ?? 0
   const inboxUnread  = conversations?.reduce((sum, c) => sum + (c.unread_count ?? 0), 0) ?? 0
 
+  // The logged-in account (used as the label when no LinkedIn is connected yet).
+  const [user, setUser] = React.useState<AuthUser | null>(null)
+  React.useEffect(() => { setUser(getUser()) }, [])
+
   // Avatar: real photo or initials
   const avatarSrc   = session?.has_avatar
     ? `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/linkedin/avatar`
     : null
-  const displayName = session?.linkedin_name ?? 'Witty Adverts'
+  const displayName = session?.linkedin_name ?? user?.name ?? user?.email ?? 'GRM Connect'
   const initials    = displayName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
 
   const W = sidebarCollapsed ? 68 : 240
@@ -290,7 +295,7 @@ export function Sidebar() {
                 <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate leading-tight">
                   {session?.linkedin_headline
                     ? session.linkedin_headline.split(' ').slice(0, 4).join(' ') + '…'
-                    : 'wittyadverts.team@gmail.com'}
+                    : (user?.email ?? '')}
                 </p>
               </div>
               <ChevronDown className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 shrink-0 ml-1" />
