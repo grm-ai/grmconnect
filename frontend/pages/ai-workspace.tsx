@@ -51,12 +51,16 @@ export default function AIWorkspacePage() {
   const selectedLead = leads?.find(l => l.id === selectedLeadId)
 
   async function handleQuickAction(action: typeof QUICK_ACTIONS[0]['action']) {
+    // "shorten"/"expand" work on the message already generated (not on your saved talking points).
+    const needsExisting = action === 'shorten' || action === 'expand'
+    if (needsExisting && !result.trim()) { toast.error('Generate a message first, then shorten/expand it.'); return }
+    // Note: your About You + Talking Points flow into every generation server-side, so we do NOT
+    // pass them as the message "purpose" here — otherwise the AI just restates your talking points.
     const res = await generate.mutateAsync({
       action,
       lead: selectedLead,
       tone,
-      context,
-      existing_message: action !== 'generate' && action !== 'follow_up' ? context : undefined,
+      existing_message: needsExisting ? result : undefined,
     })
     setResult(res.message)
     toast.success('Generated!')
