@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     # ── AI ────────────────────────────────────────────────────────────────────
     anthropic_api_key: str = ""
     gemini_api_key: str = ""
+    # Overridable via env GEMINI_MODEL so a deprecated model can be swapped without a code change.
+    gemini_model: str = "gemini-2.5-flash"
 
     # ── CORS ──────────────────────────────────────────────────────────────────
     allowed_origins: str = "http://localhost:3000"

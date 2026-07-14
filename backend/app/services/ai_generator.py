@@ -52,8 +52,9 @@ class AIGenerator:
             try:
                 import google.generativeai as genai
                 genai.configure(api_key=gemini_key)
-                self._gemini = genai.GenerativeModel("gemini-2.5-flash-lite")
-                app_logger.info("AIGenerator: Gemini Flash ready")
+                model_name = getattr(settings, "gemini_model", "") or "gemini-2.5-flash"
+                self._gemini = genai.GenerativeModel(model_name)
+                app_logger.info("AIGenerator: Gemini ready (model=%s)", model_name)
             except ImportError:
                 app_logger.warning(
                     "google-generativeai not installed — run: pip install google-generativeai"
