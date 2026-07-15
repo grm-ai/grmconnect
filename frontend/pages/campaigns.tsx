@@ -53,6 +53,13 @@ export default function CampaignsPage() {
   const isCampaignActive = (campaignId: string) =>
     (campaignsRef.current || []).find(c => c.id === campaignId)?.status === 'active'
 
+  // LinkedIn's OWN invite quota (FUSE_LIMIT_EXCEEDED) is a hard account-level wall, not a
+  // per-lead problem — once hit, every remaining CONNECT in the batch fails the same way.
+  // Back off CONNECT sends for a while instead of grinding through the rest of the list and
+  // retrying again on the very next auto-run cycle 3 minutes later. Messages/follow-ups use a
+  // different LinkedIn quota, so they're left unaffected.
+  const connectBlockedUntilRef = React.useRef(0)
+
   // Manual Sync/Refresh: ask the extension to read who accepted your invites from LinkedIn,
   // reconcile it into the DB (flips leads to ACCEPTED → Day-2 messages become due), and refresh
   // the progress table + all related views.
@@ -167,10 +174,18 @@ export default function CampaignsPage() {
       // mid-batch, stop sending the rest right now instead of finishing the whole batch first.
       if (silent && !isCampaignActive(campaignId)) break
       const a = actions[i]
+      // LinkedIn's invite quota is currently blocked (see below) — leave this CONNECT step
+      // PENDING and skip it entirely rather than sending it into the same wall again.
+      if (a.action_type === 'CONNECT' && Date.now() < connectBlockedUntilRef.current) continue
       let res: any = { success: false }
       try {
         res = a.action_type === 'CONNECT' ? await runConnect(a) : { success: await runMessage(a) }
       } catch {}
+      if (res.rate_limited) {
+        connectBlockedUntilRef.current = Date.now() + 30 * 60 * 1000
+        toast.error('LinkedIn has capped connection invites for now — pausing invite sends for 30 min so we don’t keep hitting the wall. Messages/follow-ups continue normally.', { duration: 8000 })
+        continue   // don't record a failed result — leave it PENDING to retry after the backoff
+      }
       const done = !!res.success || !!res.already_connected || !!res.already_pending
       await jfetch('POST', `/campaigns/actions/${a.action_id}/result`, {
         success: !!res.success,

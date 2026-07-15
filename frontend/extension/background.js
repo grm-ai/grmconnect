@@ -1229,6 +1229,12 @@ async function _lpSendInviteViaApi(vanity, note) {
       // → already contacted; treat as pending, do NOT retry other endpoints or fall to any UI path.
       if (/CANT_RESEND_YET|CANT_RESEND|CantResendYet|AlreadyInvited|InvitationExists|INVITATION_EXISTS/i.test(txt)) { out.alreadyPending = true; out.usedEp = a.name; break; }
       if (/AlreadyConnected|ALREADY_CONNECTED/i.test(txt)) { out.alreadyConnected = true; break; }
+      // LinkedIn's OWN invite quota is exhausted (weekly/daily invite cap, or account restricted) —
+      // this is a hard account-level wall, not a per-lead problem. Trying the other 2 fallback
+      // endpoints will only fail the same way for every remaining lead too, so stop immediately
+      // instead of hammering LinkedIn 3x per lead while it's already refusing — repeated failed
+      // attempts right after a rate-limit signal is exactly the pattern fraud detection watches for.
+      if (res.status === 429 || /FUSE_LIMIT_EXCEEDED|RATE_LIMIT|TOO_MANY_REQUESTS/i.test(txt)) { out.rateLimited = true; out.usedEp = a.name; break; }
     } catch (e) { out.steps.push({ step: 'invite', ep: a.name, error: String(e).slice(0, 140) }); }
   }
   return out;
@@ -1625,6 +1631,7 @@ async function clickConnectButton(tabId, profileUrl, note, leadEmail) {
     // ConnectionStatus.ACCEPTED / PENDING respectively (see extension_connect_result).
     if (api && api.alreadyConnected) return { success: false, already_connected: true, error: 'already_connected' };
     if (api && api.alreadyPending) return { success: false, already_pending: true, error: 'already_pending' };
+    if (api && api.rateLimited) return { success: false, rate_limited: true, error: 'rate_limited' };
     if (api && api.success) {
       // AUTHORITATIVE: LinkedIn's own API returned 200 with an invitationUrn — the invitation was
       // created (confirmed in Invitation Manager → Sent, WITH the note). The API cannot fake a
@@ -3044,14 +3051,21 @@ async function handleSendInvite({ linkedin_url, note, job_id, lead_email }) {
   const _mSNOuter = linkedin_url.match(/\/sales\/lead\/([^/?#]+)/);
   const salesNavFull = _mSNOuter ? _mSNOuter[1] : null;   // "ACo...,NAME_SEARCH,xyz"
 
-  // Helper: ALWAYS notify backend before returning — prevents the 60-second timeout
+  // Helper: ALWAYS notify backend before returning — prevents the 60-second timeout.
+  // Campaign sends use a synthetic job_id ("camp-<action_id>") that only exists client-side for
+  // correlating the leadpilot-send-invite/-result events — it's never registered in the backend's
+  // _lead_connect_jobs table, so posting here always 404s (harmless, since the campaign flow already
+  // records the real result via POST /campaigns/actions/{id}/result — but pure noise). Only the
+  // single-lead "Send Invite" button flow uses a real backend-tracked job_id, so only post for that.
   async function done(result) {
-    await post(`/leads/connect-job/${job_id}/extension-result`, {
-      success: result.success,
-      note: result.success ? note : undefined,
-      error: result.error,
-      session_expired: result.session_expired ?? false,
-    });
+    if (job_id && !String(job_id).startsWith('camp-')) {
+      await post(`/leads/connect-job/${job_id}/extension-result`, {
+        success: result.success,
+        note: result.success ? note : undefined,
+        error: result.error,
+        session_expired: result.session_expired ?? false,
+      });
+    }
     return result;
   }
 
