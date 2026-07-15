@@ -25,7 +25,7 @@ import {
   useOpenBrowser, useBrowserStatus, useCaptureSession, useCloseBrowser,
   useChromeProfiles, useRefreshProfile, type ChromeProfile,
 } from '../src/hooks/useLinkedIn'
-import { getUser, type AuthUser } from '../src/lib/auth'
+import { getUser, getToken, setAuth, type AuthUser } from '../src/lib/auth'
 import { formatRelativeTime } from '../src/lib/utils'
 import { toast } from 'sonner'
 
@@ -53,6 +53,46 @@ export default function SettingsPage() {
   // The logged-in account (shown on the Team tab as the current member).
   const [me, setMe] = useState<AuthUser | null>(null)
   React.useEffect(() => { setMe(getUser()) }, [])
+
+  // ── Your Profile (per-user, not shared) ─────────────────────────────────────
+  const [profileFirstName, setProfileFirstName] = useState('')
+  const [profileLastName, setProfileLastName] = useState('')
+  const [profileTimezone, setProfileTimezone] = useState('UTC')
+  const [profileEmail, setProfileEmail] = useState('')
+  const [profileSaving, setProfileSaving] = useState(false)
+  React.useEffect(() => {
+    fetch(`${BASE}/auth/me`).then(r => r.json()).then(json => {
+      const u = json?.data
+      if (!u) return
+      const [first, ...rest] = String(u.name || '').trim().split(/\s+/)
+      setProfileFirstName(u.name ? first : '')
+      setProfileLastName(u.name ? rest.join(' ') : '')
+      setProfileTimezone(u.timezone || 'UTC')
+      setProfileEmail(u.email || '')
+    }).catch(() => {/* backend may not be running */})
+  }, [])
+
+  async function handleSaveProfile() {
+    setProfileSaving(true)
+    try {
+      const name = `${profileFirstName} ${profileLastName}`.trim()
+      const res = await fetch(`${BASE}/auth/profile`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, timezone: profileTimezone }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.message ?? `HTTP ${res.status}`)
+      // Keep the cached user (Team tab, header, etc.) in sync with the new name immediately.
+      const token = getToken()
+      if (token && me) setAuth(token, { ...me, name })
+      setMe(prev => prev ? { ...prev, name } : prev)
+      toast.success('Profile saved!')
+    } catch (err: any) {
+      toast.error(err?.message ?? 'Failed to save profile')
+    } finally {
+      setProfileSaving(false)
+    }
+  }
   // ── API key state ─────────────────────────────────────────────────────────
   const [geminiKey,    setGeminiKey]    = useState('')
   const [anthropicKey, setAnthropicKey] = useState('')
@@ -88,11 +128,6 @@ export default function SettingsPage() {
       if (data.slack_webhook_url) setSlackWebhook(data.slack_webhook_url)
     }).catch(() => {/* backend may not be running */})
   }, [])
-
-  // Legacy mock-settings for non-API-key fields still used in webhooks/notifications tabs
-  const [settings, setSettings] = useState({
-    timezone: 'UTC',
-  })
 
   // LinkedIn login state
   const [liEmail, setLiEmail] = useState('')
@@ -211,11 +246,6 @@ export default function SettingsPage() {
     } finally {
       setSaving(false)
     }
-  }
-
-  // Legacy stub for profile tab
-  function handleSave() {
-    toast.success('Settings saved!')
   }
 
   return (
@@ -1173,18 +1203,24 @@ export default function SettingsPage() {
               <CardHeader><CardTitle className="text-sm flex items-center gap-2"><User className="w-4 h-4" />Your Profile</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-4">
-                  <Avatar className="w-16 h-16"><AvatarFallback className="text-xl">WA</AvatarFallback></Avatar>
+                  <Avatar className="w-16 h-16"><AvatarFallback className="text-xl">
+                    {(profileFirstName[0] || profileEmail[0] || 'U').toUpperCase()}{(profileLastName[0] || '').toUpperCase()}
+                  </AvatarFallback></Avatar>
                   <Button variant="outline" size="sm" className="h-8 text-xs">Change Photo</Button>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5"><Label className="text-xs">First Name</Label><Input defaultValue="Witty" className="h-8 text-xs" /></div>
-                  <div className="space-y-1.5"><Label className="text-xs">Last Name</Label><Input defaultValue="Adverts" className="h-8 text-xs" /></div>
-                  <div className="col-span-2 space-y-1.5"><Label className="text-xs">Email</Label><Input defaultValue="wittyadverts.team@gmail.com" className="h-8 text-xs" /></div>
-                  <div className="space-y-1.5"><Label className="text-xs">Timezone</Label><Input value={settings.timezone} onChange={e => setSettings({ timezone: e.target.value })} className="h-8 text-xs" /></div>
+                  <div className="space-y-1.5"><Label className="text-xs">First Name</Label><Input value={profileFirstName} onChange={e => setProfileFirstName(e.target.value)} className="h-8 text-xs" /></div>
+                  <div className="space-y-1.5"><Label className="text-xs">Last Name</Label><Input value={profileLastName} onChange={e => setProfileLastName(e.target.value)} className="h-8 text-xs" /></div>
+                  <div className="col-span-2 space-y-1.5">
+                    <Label className="text-xs">Email</Label>
+                    <Input value={profileEmail} disabled className="h-8 text-xs opacity-70" />
+                    <p className="text-[11px] text-muted-foreground">Email is your login — contact support to change it.</p>
+                  </div>
+                  <div className="space-y-1.5"><Label className="text-xs">Timezone</Label><Input value={profileTimezone} onChange={e => setProfileTimezone(e.target.value)} className="h-8 text-xs" /></div>
                 </div>
               </CardContent>
             </Card>
-            <Button onClick={handleSave} className="gap-2"><Save className="w-4 h-4" />Save Profile</Button>
+            <Button onClick={handleSaveProfile} loading={profileSaving} className="gap-2"><Save className="w-4 h-4" />Save Profile</Button>
           </TabsContent>
         </Tabs>
       </div>

@@ -84,6 +84,22 @@ class RateLimiter:
         )
         return (await db.execute(q)).scalar_one() or 0
 
+    async def count_messages_sent_today(self, db: "AsyncSession", user_id: int) -> int:
+        """Outbound MESSAGE/FOLLOWUP sends today, counted from the persisted Message row (not the
+        Action row) — this survives campaign deletion, same reasoning as count_connect_sent_today.
+        Action rows cascade-delete with their Campaign (Campaign.actions cascade="delete-orphan"),
+        so counting from Action let a delete-then-resend reset the daily message count to 0."""
+        from sqlalchemy import select, func
+        from app.models import Message, MessageDirection
+        start, end = _today_window()
+        q = select(func.count()).select_from(Message).where(
+            Message.user_id == user_id,
+            Message.direction == MessageDirection.OUTBOUND,
+            Message.sent_at >= start,
+            Message.sent_at <= end,
+        )
+        return (await db.execute(q)).scalar_one() or 0
+
     async def check_global_connect_limit(self, db: "AsyncSession", user_id: int | None = None) -> tuple[bool, int, int]:
         """Returns (allowed, used_today, limit)."""
         limit = settings.daily_connect_limit
@@ -107,27 +123,17 @@ class RateLimiter:
         return used < limit, used, limit
 
     async def get_today_stats(self, db: "AsyncSession", user_id: int | None = None) -> dict:
-        """Return full today's usage stats."""
-        from sqlalchemy import select, func
-        from app.models import Action, ActionStatus, ActionType
-
-        start, _ = _today_window()
-        q = (
-            select(Action.action_type, func.count())
-            .where(Action.status == ActionStatus.SUCCESS, Action.executed_at >= start)
-        )
-        if user_id is not None:
-            q = q.where(Action.user_id == user_id)
-        result = await db.execute(q.group_by(Action.action_type))
-        rows = result.all()
-        counts = {row[0].value if hasattr(row[0], 'value') else row[0]: row[1] for row in rows}
+        """Return full today's usage stats. Counts from Lead/Message (not Action), so a deleted
+        campaign can't make today's usage look lower than it actually was."""
+        connect_sent = await self.count_connect_sent_today(db, user_id) if user_id is not None else 0
+        messages_sent = await self.count_messages_sent_today(db, user_id) if user_id is not None else 0
         return {
-            "connect_sent":   counts.get("CONNECT", 0),
-            "messages_sent":  counts.get("MESSAGE", 0) + counts.get("FOLLOWUP", 0),
+            "connect_sent":   connect_sent,
+            "messages_sent":  messages_sent,
             "connect_limit":  settings.daily_connect_limit,
             "message_limit":  settings.daily_message_limit,
-            "connect_remaining": max(0, settings.daily_connect_limit - counts.get("CONNECT", 0)),
-            "message_remaining": max(0, settings.daily_message_limit - (counts.get("MESSAGE", 0) + counts.get("FOLLOWUP", 0))),
+            "connect_remaining": max(0, settings.daily_connect_limit - connect_sent),
+            "message_remaining": max(0, settings.daily_message_limit - messages_sent),
             "date": date.today().isoformat(),
         }
 

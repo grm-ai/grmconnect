@@ -288,9 +288,14 @@ class AIGenerator:
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
                 msg = str(exc).lower()
-                # Model unavailable → try the next candidate. Quota/network → stop and surface it.
-                if "404" in msg or "not found" in msg or "not available" in msg or "not supported" in msg:
-                    app_logger.warning("Gemini model %s unavailable, trying next: %s", name, str(exc)[:140])
+                # Model unavailable OR its per-model free quota is exhausted → try the next
+                # candidate (quotas on this project are per-model, so one model hitting its daily
+                # cap doesn't mean the others are also out). Only a genuine network/auth failure
+                # should stop the loop and surface an error instead of silently falling to a
+                # generic template.
+                if ("404" in msg or "not found" in msg or "not available" in msg or "not supported" in msg
+                        or "429" in msg or "exhausted" in msg or "quota" in msg or "rate limit" in msg):
+                    app_logger.warning("Gemini model %s unavailable/exhausted, trying next: %s", name, str(exc)[:140])
                     continue
                 raise
         if last_exc:

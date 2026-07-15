@@ -214,6 +214,8 @@ async def campaign_due_actions(
     campaign = await db.get(Campaign, campaign_id)
     if not campaign or campaign.user_id != user.id:
         raise CampaignNotFoundError()
+    if campaign.status != CampaignStatus.ACTIVE:
+        return ApiResponse(data=[], message="Campaign is not active — nothing is due.")
     now = datetime.now(timezone.utc)
 
     # For steps left blank at launch (payload.ai == True), the AI writes the text per-lead now,
@@ -264,7 +266,7 @@ async def campaign_due_actions(
     from app.services.rate_limiter import RateLimiter
     _rl = RateLimiter()
     connect_used = await _rl.count_connect_sent_today(db, user.id)   # from the lead, survives campaign delete
-    msg_used = (await _rl._count_from_db(db, None, "MESSAGE", user_id=user.id)) + (await _rl._count_from_db(db, None, "FOLLOWUP", user_id=user.id))
+    msg_used = await _rl.count_messages_sent_today(db, user.id)      # from Message, survives campaign delete
     connect_remaining = max(0, _cfg.daily_connect_limit - connect_used)
     msg_remaining = max(0, _cfg.daily_message_limit - msg_used)
 
@@ -382,6 +384,7 @@ async def campaign_action_result(
                 lead.connection_sent_at = now
         else:  # MESSAGE / FOLLOWUP → persist the outbound message
             db.add(Message(
+                user_id=user.id,
                 lead_id=lead.id,
                 campaign_id=action.campaign_id,
                 direction=MessageDirection.OUTBOUND,
@@ -532,6 +535,8 @@ async def campaign_autopilot_pending(
     campaign = await db.get(Campaign, campaign_id)
     if not campaign or campaign.user_id != user.id:
         raise CampaignNotFoundError()
+    if campaign.status != CampaignStatus.ACTIVE:
+        return ApiResponse(data=[], message="Campaign is not active.")
     if not campaign.autopilot:
         return ApiResponse(data=[], message="Autopilot is off for this campaign.")
 
@@ -547,7 +552,7 @@ async def campaign_autopilot_pending(
     from app.config import settings as _cfg
     from app.services.rate_limiter import RateLimiter
     _rl = RateLimiter()
-    msg_used = (await _rl._count_from_db(db, None, "MESSAGE", user_id=user.id)) + (await _rl._count_from_db(db, None, "FOLLOWUP", user_id=user.id))
+    msg_used = await _rl.count_messages_sent_today(db, user.id)   # from Message, survives campaign delete
     msg_remaining = max(0, _cfg.daily_message_limit - msg_used)
 
     ai = AIGenerator(sender={

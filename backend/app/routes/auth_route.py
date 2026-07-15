@@ -35,6 +35,8 @@ class AuthOut(BaseModel):
 
 
 class ProfileIn(BaseModel):
+    name: str | None = None
+    timezone: str | None = None
     sender_name: str | None = None
     sender_role: str | None = None
     sender_company: str | None = None
@@ -48,7 +50,7 @@ def _norm_email(e: str) -> str:
 
 def _user_dict(u: User) -> dict:
     return {
-        "id": u.id, "email": u.email, "name": u.name,
+        "id": u.id, "email": u.email, "name": u.name, "timezone": u.timezone,
         "sender_name": u.sender_name, "sender_role": u.sender_role,
         "sender_company": u.sender_company, "sender_about": u.sender_about,
         "sender_talking_points": u.sender_talking_points,
@@ -103,8 +105,10 @@ async def update_profile(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ApiResponse[dict]:
-    """Save the user's 'About You' outreach identity (used by the AI to personalise messages)."""
-    for field in ("sender_name", "sender_role", "sender_company", "sender_about", "sender_talking_points"):
+    """Save the user's account profile (name/timezone) and 'About You' outreach identity
+    (used by the AI to personalise messages)."""
+    for field in ("name", "timezone", "sender_name", "sender_role", "sender_company",
+                  "sender_about", "sender_talking_points"):
         val = getattr(body, field)
         if val is not None:
             setattr(user, field, val.strip() or None)

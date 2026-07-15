@@ -45,6 +45,14 @@ export default function CampaignsPage() {
 
   const selected = campaigns?.find(c => c.id === selectedId) ?? null
 
+  // Kept in sync with the latest campaigns list so in-flight send loops (runDueSteps /
+  // runAutopilotReplies) can check the CURRENT status mid-batch — a stale closure over
+  // `campaigns` would otherwise keep sending for several more steps after Pause.
+  const campaignsRef = React.useRef(campaigns)
+  React.useEffect(() => { campaignsRef.current = campaigns }, [campaigns])
+  const isCampaignActive = (campaignId: string) =>
+    (campaignsRef.current || []).find(c => c.id === campaignId)?.status === 'active'
+
   // Manual Sync/Refresh: ask the extension to read who accepted your invites from LinkedIn,
   // reconcile it into the DB (flips leads to ACCEPTED → Day-2 messages become due), and refresh
   // the progress table + all related views.
@@ -155,6 +163,9 @@ export default function CampaignsPage() {
     if (!silent) { setRunProgress({ done: 0, total: actions.length }); toast.info(`Running ${actions.length} due step(s). Keep this tab + a LinkedIn tab open.`, { duration: 5000 }) }
     let ok = 0
     for (let i = 0; i < actions.length; i++) {
+      // Auto-run cycles a batch fetched before this loop started — if the campaign was Paused
+      // mid-batch, stop sending the rest right now instead of finishing the whole batch first.
+      if (silent && !isCampaignActive(campaignId)) break
       const a = actions[i]
       let res: any = { success: false }
       try {
@@ -183,6 +194,7 @@ export default function CampaignsPage() {
     if (!items.length) return 0
     let sent = 0
     for (const it of items) {
+      if (!isCampaignActive(campaignId)) break
       let ok = false
       try { ok = await runMessage({ thread: it.thread, linkedin_url: it.linkedin_url, text: it.reply }) } catch {}
       if (ok) {

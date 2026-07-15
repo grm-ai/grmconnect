@@ -86,6 +86,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str | None] = mapped_column(String(255))
+    timezone: Mapped[str | None] = mapped_column(String(64))
     # Per-user "About You" outreach identity (used by the AI to personalise messages).
     sender_name: Mapped[str | None] = mapped_column(String(255))
     sender_role: Mapped[str | None] = mapped_column(String(255))
