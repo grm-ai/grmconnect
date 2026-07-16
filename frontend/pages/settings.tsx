@@ -23,7 +23,7 @@ import {
   useRevokeLinkedIn, usePollInbox, usePollStatus,
   useDailyLimits, useUpdateLimits,
   useOpenBrowser, useBrowserStatus, useCaptureSession, useCloseBrowser,
-  useChromeProfiles, useRefreshProfile, type ChromeProfile,
+  useChromeProfiles, type ChromeProfile,
 } from '../src/hooks/useLinkedIn'
 import { getUser, getToken, setAuth, type AuthUser } from '../src/lib/auth'
 import { formatRelativeTime } from '../src/lib/utils'
@@ -93,6 +93,36 @@ export default function SettingsPage() {
       setProfileSaving(false)
     }
   }
+  // ── Sync profile via extension ──────────────────────────────────────────────
+  // /linkedin/profile/refresh (refreshProfile below) intentionally does NOT call LinkedIn — it
+  // only re-reads whatever's already cached in the DB, to avoid a server-side API call that would
+  // force-logout the session (same-session-two-IPs). So it can never populate a name/headline that
+  // was never captured. The only real way to (re)capture it is the SAME extension mechanism the
+  // initial "Save Session from Browser" button uses — re-run it here so a session that connected
+  // without an active LinkedIn tab (and so missed the name) can pick it up on a later Sync click.
+  const [profileSyncPending, setProfileSyncPending] = useState(false)
+  async function handleSyncProfile() {
+    setProfileSyncPending(true)
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const onSaved = (e: any) => {
+          window.removeEventListener('leadpilot-session-saved', onSaved)
+          if (e.detail?.success) resolve()
+          else reject(new Error(e.detail?.error || 'unknown'))
+        }
+        window.addEventListener('leadpilot-session-saved', onSaved, { once: true })
+        window.dispatchEvent(new CustomEvent('leadpilot-save-session'))
+        setTimeout(() => { window.removeEventListener('leadpilot-session-saved', onSaved); reject(new Error('timeout — make sure a LinkedIn tab is open')) }, 8000)
+      })
+      queryClient.invalidateQueries({ queryKey: ['linkedin-session'] })
+      toast.success('Profile synced!')
+    } catch (err: any) {
+      toast.error('Sync failed: ' + (err?.message ?? 'unknown') + ' — make sure a LinkedIn tab is open and the extension is installed.')
+    } finally {
+      setProfileSyncPending(false)
+    }
+  }
+
   // ── API key state ─────────────────────────────────────────────────────────
   const [geminiKey,    setGeminiKey]    = useState('')
   const [anthropicKey, setAnthropicKey] = useState('')
@@ -145,7 +175,6 @@ export default function SettingsPage() {
   const verify2FA      = useLinkedIn2FA()
   const revoke         = useRevokeLinkedIn()
   const pollInbox      = usePollInbox()
-  const refreshProfile = useRefreshProfile()
 
   // open-browser session tracking
   const [browserSessionId, setBrowserSessionId] = useState<string | null>(null)
@@ -380,9 +409,9 @@ export default function SettingsPage() {
                         variant="outline"
                         size="sm"
                         className="h-8 text-xs gap-1.5"
-                        onClick={() => refreshProfile.mutate()}
-                        loading={refreshProfile.isPending}
-                        title="Re-fetch your profile data from LinkedIn"
+                        onClick={handleSyncProfile}
+                        loading={profileSyncPending}
+                        title="Re-read your name/headline from the open LinkedIn tab via the extension"
                       >
                         <RefreshCw className="w-3 h-3" />
                         Sync
@@ -406,9 +435,9 @@ export default function SettingsPage() {
                       <h3 className="font-bold text-base leading-tight">
                         {session.linkedin_name
                           ? session.linkedin_name
-                          : refreshProfile.isPending
+                          : profileSyncPending
                             ? 'Loading profile…'
-                            : 'LinkedIn User'}
+                            : 'Click Sync to load your name'}
                       </h3>
                       <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
                         <CheckCircle2 className="w-2.5 h-2.5 mr-0.5 text-emerald-500" />
@@ -420,7 +449,7 @@ export default function SettingsPage() {
                       <p className="text-sm text-muted-foreground mt-1 leading-snug">
                         {session.linkedin_headline}
                       </p>
-                    ) : refreshProfile.isPending ? (
+                    ) : profileSyncPending ? (
                       <div className="h-3 w-48 bg-muted animate-pulse rounded mt-1.5" />
                     ) : null}
 

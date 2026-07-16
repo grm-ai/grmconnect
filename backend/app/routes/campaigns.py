@@ -80,12 +80,14 @@ _DEFAULT_TEMPLATES = {
 }
 
 
-def _render(tpl: str, lead: Lead) -> str:
+def _render(tpl: str, lead: Lead, max_len: int = 800) -> str:
+    from app.services.ai_generator import _smart_truncate
     first = (lead.name or "").strip().split(" ")[0] if lead.name else "there"
-    return (tpl.replace("{{first_name}}", first)
-               .replace("{{name}}", lead.name or "there")
-               .replace("{{company}}", lead.company or "your company")
-               .replace("{{title}}", lead.title or ""))[:800]
+    rendered = (tpl.replace("{{first_name}}", first)
+                   .replace("{{name}}", lead.name or "there")
+                   .replace("{{company}}", lead.company or "your company")
+                   .replace("{{title}}", lead.title or ""))
+    return _smart_truncate(rendered, max_len)
 
 
 @router.post("/{campaign_id}/activate", response_model=ApiResponse[dict])
@@ -170,7 +172,9 @@ async def activate_campaign(
             tpl = templates[atype]
             payload = {"day_offset": day_offset, "source": "campaign_drip"}
             if tpl:
-                payload["text"] = _render(tpl, lead)
+                # LinkedIn's connect-note limit is 200 chars (confirmed — over that gets rejected
+                # with CUSTOM_MESSAGE_TOO_LONG); MESSAGE/FOLLOWUP have no such limit.
+                payload["text"] = _render(tpl, lead, 200 if atype == ActionType.CONNECT else 800)
             else:
                 payload["text"] = ""      # AI writes this step lazily at /due (goal + About You)
                 payload["ai"] = True

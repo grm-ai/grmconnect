@@ -196,7 +196,10 @@ export default function CampaignsPage() {
       if (done) ok++
       if (!silent) setRunProgress({ done: i + 1, total: actions.length })
       qc.invalidateQueries({ queryKey: ['leads'] }); qc.invalidateQueries({ queryKey: ['conversations'] })
-      if (i < actions.length - 1) await sleep(5000 + Math.random() * 5000)
+      // Wider, more human gap between sends — a fast 5-10s burst pattern triggered LinkedIn's
+      // CUSTOM_INVITE_LIMIT_REACHED after only ~4 sends; a manual (naturally-paced) send went
+      // through fine right after, pointing at a burst/velocity limit rather than a hard cap.
+      if (i < actions.length - 1) await sleep(20000 + Math.random() * 15000)
     }
     await loadProgress(campaignId)
     return ok

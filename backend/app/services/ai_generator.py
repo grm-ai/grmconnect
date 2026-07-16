@@ -10,6 +10,26 @@ from app.logger import app_logger
 _WORKING_GEMINI_MODEL: str | None = None
 
 
+def _smart_truncate(text: str, limit: int) -> str:
+    """
+    Cut text down to `limit` chars WITHOUT chopping mid-word/mid-sentence — a plain text[:limit]
+    left AI-generated notes ending "...can accele" / "...15-minute" (confirmed via real sent
+    invites). Prefers the last complete sentence; falls back to the last complete word.
+    """
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    for end in (". ", "! ", "? "):
+        idx = cut.rfind(end)
+        if idx > limit * 0.5:
+            return cut[: idx + 1].strip()
+    idx = cut.rfind(" ")
+    if idx > limit * 0.5:
+        return cut[:idx].rstrip(" ,;:-")
+    return cut.rstrip()
+
+
 class AIGenerator:
     """
     Generates personalised outreach messages.
@@ -89,7 +109,10 @@ class AIGenerator:
             return self._fallback_connect(lead_name, lead_company)
 
         lines = [
-            f"Write a short LinkedIn connection request note (strictly under 280 characters) to {lead_name}",
+            # LinkedIn's actual connect-note limit is 200 characters (confirmed: notes over ~200
+            # get rejected with CUSTOM_MESSAGE_TOO_LONG) — leave a margin so the AI doesn't land
+            # right on the edge and get truncated mid-sentence by the hard cap below.
+            f"Write a short LinkedIn connection request note (strictly under 190 characters) to {lead_name}",
         ]
         if lead_title:
             lines.append(f"who is a {lead_title}")
@@ -110,6 +133,7 @@ class AIGenerator:
         # If the AI call fails/returns empty (quota, network, etc.), fall back to a real
         # template note — NEVER return empty, or the invite would go out with a blank note.
         note = await self._call(". ".join(lines))
+        note = _smart_truncate(note, 200) if note else note   # LinkedIn rejects notes over ~200 chars
         return note or self._fallback_connect(lead_name, lead_company)
 
     async def generate_message(

@@ -366,7 +366,7 @@ async function cdpOpenMoreAndClickConnect(tabId, note, directConnect = false) {
     var ta=null;function walk(root){if(ta)return;var els;try{els=root.querySelectorAll('textarea');}catch(e){return;}if(els.length){ta=els[0];return;}var all;try{all=root.querySelectorAll('*');}catch(e){return;}for(var i=0;i<all.length;i++){if(all[i].shadowRoot){walk(all[i].shadowRoot);if(ta)return;}}}
     walk(document);
     if(!ta) return {filled:false};
-    var val=${JSON.stringify((note || '').slice(0, 300))};
+    var val=${JSON.stringify((note || '').slice(0, 200))};
     ta.focus();
     var setter=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value');
     if(setter&&setter.set)setter.set.call(ta,val);else ta.value=val;
@@ -724,7 +724,7 @@ function _lpFillNoteInFrame(note) {
   };
   const ta = deep()[0];
   if (!ta) return { filled: false };
-  const val = (note || '').slice(0, 300);
+  const val = (note || '').slice(0, 200);
   ta.focus();
   // React tracks the textarea value via its own internal value-tracker; a plain `ta.value = …`
   // is reverted on the next render and leaves "Send" disabled. Set through the native prototype
@@ -1197,7 +1197,10 @@ async function _lpSendInviteViaApi(vanity, note) {
   if (out.rel === 'pending') { out.alreadyPending = true; return out; }
 
   const idOnly = urn.split(':').pop();
-  const msg = (note || '').trim().slice(0, 300);
+  // LinkedIn's actual connect-note limit is 200 chars — confirmed via live data: notes over that
+  // get rejected with CUSTOM_MESSAGE_TOO_LONG (400) on dash-verifyQuotaAndCreateV2, so a 300-char
+  // note failed on every lead. This is the note the primary in-tab invite API actually sends.
+  const msg = (note || '').trim().slice(0, 200);
   const trackingId = btoa(String.fromCharCode.apply(null, crypto.getRandomValues(new Uint8Array(16))));
 
   // 2) Try invite endpoints in order; stop on the first 200/201.
@@ -1437,6 +1440,8 @@ async function _lpFetchInbox() {
       if (!other) continue;
       const threadId = typeof c.entityUrn === 'string' ? c.entityUrn : '';
       const messages = [];
+      // This conversation-list response only ever embeds the single latest message per chat, with
+      // no pagination handle (confirmed via live capture — c.messages has no metadata/cursor field).
       const mel = (c.messages && c.messages.elements) || c.events || [];
       for (const m of mel) {
         const text = (m.body && (m.body.text || (typeof m.body === 'string' ? m.body : ''))) || '';
@@ -1458,6 +1463,17 @@ async function _lpFetchInbox() {
   out.msgCounts = out.convs.slice(0, 8).map(c => `${c.name || c.vanity}:${c.messages.length}`);
   return out;
 }
+
+// NOTE: full per-conversation message history is NOT available via a simple REST/GraphQL call —
+// confirmed via live capture (2026-07). The only per-thread query LinkedIn's own web client calls
+// is messengerMessages.<hash>, whose response type is literally "messengerMessagesBySyncToken" — a
+// real-time delta-sync endpoint (new messages since a short-lived syncToken), not history pagination.
+// It returned only the single latest message even right after a full page reload, so LinkedIn's
+// client isn't using it for history either. Full history is evidently delivered over LinkedIn's
+// realtime WebSocket channel or embedded in page bootstrap state — reverse-engineering that would be
+// a much bigger, riskier undertaking than the plain authenticated REST calls used everywhere else in
+// this extension, so it's intentionally not attempted here. See project memory for the full
+// investigation trail if this is revisited.
 
 // ── Send a LinkedIn message in-tab (for campaign follow-ups + inbox replies) ───────────────────
 // LinkedIn READS messages via GraphQL but WRITES via the dash action endpoint
@@ -2243,7 +2259,7 @@ async function clickConnectButton(tabId, profileUrl, note, leadEmail) {
         const textarea = document.querySelector('textarea');
         if (!textarea) return { found: false };
         textarea.focus();
-        textarea.value = noteText.slice(0, 300);
+        textarea.value = noteText.slice(0, 200);
         textarea.dispatchEvent(new Event('input', { bubbles: true }));
         textarea.dispatchEvent(new Event('change', { bubbles: true }));
 
@@ -3136,7 +3152,7 @@ async function handleSendInvite({ linkedin_url, note, job_id, lead_email }) {
               if (!csrf) return { success: false, error: 'session_expired (no CSRF)', session_expired: true };
               const hdr = { 'accept': 'application/vnd.linkedin.normalized+json+2.1', 'content-type': 'application/json', 'csrf-token': csrf, 'x-restli-protocol-version': '2.0.0', 'x-li-lang': 'en_US' };
               const p = { emberEntityName: 'growth/invitation', invitee: { 'com.linkedin.voyager.growth.invitation.InviteeProfile': { profileId: fsdId } }, trackingId: btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16)))) };
-              if (noteText?.trim()) p.message = noteText.trim().slice(0, 300);
+              if (noteText?.trim()) p.message = noteText.trim().slice(0, 200);
               for (const ep of ['https://www.linkedin.com/voyager/api/growth/normInvitations', 'https://www.linkedin.com/voyager/api/relationships/normInvitations']) {
                 try {
                   const res = await fetch(ep, { method: 'POST', credentials: 'include', headers: hdr, body: JSON.stringify(p) });
@@ -3285,7 +3301,7 @@ async function handleSendInvite({ linkedin_url, note, job_id, lead_email }) {
                   invitee: { 'com.linkedin.voyager.growth.invitation.InviteeProfile': { profileId: fsdId } },
                   trackingId: btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16)))),
                 };
-                if (noteText?.trim()) payload.message = noteText.trim().slice(0, 300);
+                if (noteText?.trim()) payload.message = noteText.trim().slice(0, 200);
 
                 const sig = () => { try { return AbortSignal.timeout(10000); } catch (_) {} };
                 for (const ep of [
