@@ -18,6 +18,23 @@ function authHeaders() {
   return h;
 }
 
+// Mirrors backend app/services/ai_generator.py::_smart_truncate. A plain text.slice(0, limit)
+// left connect notes ending mid-word ("...opportunitie") whenever a note reached this layer
+// still over 200 chars (stale cached campaign text, SN payload building, etc.) — this is the
+// last-mile safety net before the note is typed/sent, so it must never do a raw char cut.
+function smartTruncateNote(text, limit = 200) {
+  text = (text || '').trim();
+  if (text.length <= limit) return text;
+  const cut = text.slice(0, limit);
+  for (const end of ['. ', '! ', '? ']) {
+    const idx = cut.lastIndexOf(end);
+    if (idx > limit * 0.5) return cut.slice(0, idx + 1).trim();
+  }
+  const idx = cut.lastIndexOf(' ');
+  if (idx > limit * 0.5) return cut.slice(0, idx).replace(/[ ,;:-]+$/, '');
+  return cut.trimEnd();
+}
+
 // chrome.scripting.executeScript can fail with "Frame with ID 0 was removed" when a
 // LinkedIn SPA does an internal re-render/navigation at the exact moment we're scripting
 // it — transient, not a logic error. Retry a couple times before giving up.
@@ -3060,6 +3077,10 @@ async function handleSaveSession() {
 }
 
 async function handleSendInvite({ linkedin_url, note, job_id, lead_email }) {
+  // Word/sentence-aware clamp to LinkedIn's 200-char connect-note limit, applied ONCE here so
+  // every downstream path (DOM textarea fill, SN API payload) receives an already-safe string —
+  // see smartTruncateNote() for why a raw slice(0, 200) is not safe to do further downstream.
+  note = smartTruncateNote(note, 200);
   // Surface whether a personalized note actually arrived from the backend. sendPath:'none' in the
   // modal handlers can mean EITHER "note branch failed" OR simply "note is empty" — this disambiguates.
   console.log('[LeadPilot BG] handleSendInvite — note length:', (note || '').trim().length, '| preview:', JSON.stringify((note || '').slice(0, 60)));

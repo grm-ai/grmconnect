@@ -238,6 +238,12 @@ async def campaign_due_actions(
     async def resolve_text(a: Action, lead: Lead) -> str:
         text = (a.payload or {}).get("text") or ""
         if text or not (a.payload or {}).get("ai"):
+            # CONNECT text cached before the 200-char smart-truncate fix landed can still be a raw,
+            # mid-word-cut string sitting in the DB — re-clamp on every read (idempotent once fixed)
+            # rather than only at first-generation time, so old rows heal instead of staying broken.
+            if text and a.action_type == ActionType.CONNECT:
+                from app.services.ai_generator import _smart_truncate
+                text = _smart_truncate(text, 200)
             return text
         if a.action_type == ActionType.CONNECT:
             t = await ai.generate_connect_note(
