@@ -242,22 +242,33 @@ export default function CampaignsPage() {
 
   // ── Auto-run: while this tab is open, execute due steps for ACTIVE campaigns on a schedule ──
   const [autoOn, setAutoOn] = useState(false)
+  // A single due-step cycle (20-35s gap PER send, see runDueSteps) routinely runs past the 3-minute
+  // tick interval below. Without this guard, a slow-running tick was still in-flight when the next
+  // one fired — both read the same (stale, not-yet-committed) "sent today" count from /due and each
+  // got their own quota's worth of actions, so the union sent past the daily cap (confirmed: a
+  // 20/day campaign sent 21, with several leads double-processed by the overlapping cycles).
+  const autoRunInFlightRef = React.useRef(false)
   React.useEffect(() => { if (typeof window !== 'undefined' && localStorage.getItem('leadpilot-autorun') === '1') setAutoOn(true) }, [])
   React.useEffect(() => {
     if (typeof window !== 'undefined') localStorage.setItem('leadpilot-autorun', autoOn ? '1' : '0')
     if (!autoOn) return
     let stop = false
     const tick = async () => {
-      if (stop || running) return
-      const active = (campaigns || []).filter(c => c.status === 'active')
-      if (!active.length) return
-      // Sync acceptance ONCE per cycle (reads the whole connections list), then run each campaign.
-      try { await syncAcceptance() } catch {}
-      for (const c of active) {
-        if (stop) break
-        try { await runDueSteps(c.id, true, true) } catch {}
-        // Autopilot: after drip steps, read new replies and auto-respond toward the goal.
-        if (c.autopilot && !stop) { try { await runAutopilotReplies(c.id) } catch {} }
+      if (stop || running || autoRunInFlightRef.current) return
+      autoRunInFlightRef.current = true
+      try {
+        const active = (campaigns || []).filter(c => c.status === 'active')
+        if (!active.length) return
+        // Sync acceptance ONCE per cycle (reads the whole connections list), then run each campaign.
+        try { await syncAcceptance() } catch {}
+        for (const c of active) {
+          if (stop) break
+          try { await runDueSteps(c.id, true, true) } catch {}
+          // Autopilot: after drip steps, read new replies and auto-respond toward the goal.
+          if (c.autopilot && !stop) { try { await runAutopilotReplies(c.id) } catch {} }
+        }
+      } finally {
+        autoRunInFlightRef.current = false
       }
     }
     tick()
