@@ -269,16 +269,49 @@ async def campaign_due_actions(
         return t
 
     # ── GLOBAL daily caps ────────────────────────────────────────────────────
-    # 20/day (etc.) must be a HARD cap across ALL campaigns AND every other send path,
-    # not per-batch. Count what's already gone out today and only hand back the remainder,
-    # so auto-run cycles can never push the daily total past the limit.
+    # 20/day (etc.) must be a HARD cap across ALL campaigns AND every other send path, not per-batch.
+    # Counting only CONFIRMED sends (Lead.connection_sent_at) left a race: an action stays PENDING
+    # from the moment /due hands it out until the extension posts back a result tens of seconds
+    # later, so an overlapping /due call (a slow auto-run cycle, a second tab, ...) would re-read the
+    # same "used" count and hand out its own quota's worth on top — confirmed in practice (a 20/day
+    # campaign sent 21). Fix: the moment an action is handed out below it's claimed (status→RUNNING,
+    # stamped with claimed_at) and that claim is counted as "used" too, so a concurrent /due sees the
+    # reservation immediately instead of only after the send eventually completes. A claim whose
+    # claimed_at is stale (>5 min — the extension itself times out at 2 min) is released back to
+    # PENDING first, so a crashed/closed tab can't permanently burn a slot.
+    _stale_cutoff = now - timedelta(minutes=5)
+    stale_claims = (await db.execute(
+        select(Action).where(
+            Action.campaign_id == campaign_id,
+            Action.status == ActionStatus.RUNNING,
+        )
+    )).scalars().all()
+    for a in stale_claims:
+        claimed_at = (a.payload or {}).get("claimed_at")
+        try:
+            is_stale = not claimed_at or datetime.fromisoformat(claimed_at) < _stale_cutoff
+        except ValueError:
+            is_stale = True
+        if is_stale:
+            a.status = ActionStatus.PENDING
+            a.payload = {k: v for k, v in (a.payload or {}).items() if k != "claimed_at"}
+            _dirty["v"] = True
+
     from app.config import settings as _cfg
     from app.services.rate_limiter import RateLimiter
     _rl = RateLimiter()
     connect_used = await _rl.count_connect_sent_today(db, user.id)   # from the lead, survives campaign delete
     msg_used = await _rl.count_messages_sent_today(db, user.id)      # from Message, survives campaign delete
-    connect_remaining = max(0, _cfg.daily_connect_limit - connect_used)
-    msg_remaining = max(0, _cfg.daily_message_limit - msg_used)
+    running_connect, running_msg = 0, 0
+    for a in (await db.execute(
+        select(Action.action_type).where(Action.user_id == user.id, Action.status == ActionStatus.RUNNING)
+    )).scalars().all():
+        if a == ActionType.CONNECT:
+            running_connect += 1
+        else:
+            running_msg += 1
+    connect_remaining = max(0, _cfg.daily_connect_limit - connect_used - running_connect)
+    msg_remaining = max(0, _cfg.daily_message_limit - msg_used - running_msg)
 
     rows = (await db.execute(
         select(Action).where(
@@ -303,6 +336,9 @@ async def campaign_due_actions(
             if connect_added >= connect_remaining:
                 continue  # global daily connect limit reached → hand back nothing more
             text = await resolve_text(a, lead)
+            a.status = ActionStatus.RUNNING  # claim it now — closes the re-poll race window
+            a.payload = {**(a.payload or {}), "claimed_at": now.isoformat()}
+            _dirty["v"] = True
             out.append({"action_id": a.id, "action_type": "CONNECT", "lead_id": lead.id,
                         "lead_name": lead.name, "linkedin_url": lead.linkedin_url, "text": text or None})
             connect_added += 1
@@ -334,6 +370,9 @@ async def campaign_due_actions(
             )).scalar_one_or_none()
             if m:
                 thread = m.linkedin_thread_id
+            a.status = ActionStatus.RUNNING  # claim it now — closes the re-poll race window
+            a.payload = {**(a.payload or {}), "claimed_at": now.isoformat()}
+            _dirty["v"] = True
             out.append({"action_id": a.id, "action_type": a.action_type.value, "lead_id": lead.id,
                         "lead_name": lead.name, "linkedin_url": lead.linkedin_url, "text": text, "thread": thread})
             msg_added += 1
