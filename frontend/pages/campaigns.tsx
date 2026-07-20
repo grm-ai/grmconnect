@@ -10,6 +10,7 @@ import { SequenceEditor } from '../src/components/SequenceEditor'
 import { Button } from '../src/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../src/components/ui/card'
 import { Badge } from '../src/components/ui/badge'
+import { Switch } from '../src/components/ui/switch'
 import { Progress } from '../src/components/ui/progress'
 import { Input } from '../src/components/ui/input'
 import { Textarea } from '../src/components/ui/textarea'
@@ -572,25 +573,33 @@ export default function CampaignsPage() {
                     <Rocket className={`w-3.5 h-3.5 ${running ? 'animate-pulse' : ''}`} />
                     {running ? `Importing ${runProgress.done}/${runProgress.total}…` : 'Fetch & Import'}
                   </Button>
-                  <Button
-                    variant={autoOn ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-8 gap-1.5"
-                    onClick={() => { setAutoOn(v => !v); toast.info(!autoOn ? 'Auto-run ON — keep this tab + a LinkedIn tab open; due steps run every ~3 min.' : 'Auto-run OFF.') }}
+                  <div
+                    className="flex items-center gap-2 h-8 px-3 rounded-lg border border-input bg-background"
                     title="While ON and this tab stays open, due steps run automatically every few minutes"
                   >
-                    <span className={`w-2 h-2 rounded-full ${autoOn ? 'bg-emerald-400 animate-pulse' : 'bg-muted-foreground/40'}`} />
-                    Auto-run {autoOn ? 'ON' : 'OFF'}
-                  </Button>
+                    <span className="text-xs font-medium text-muted-foreground">Auto-run</span>
+                    <Switch
+                      checked={autoOn}
+                      onCheckedChange={(v) => { setAutoOn(v); toast.info(v ? 'Auto-run ON — keep this tab + a LinkedIn tab open; due steps run every ~3 min.' : 'Auto-run OFF.') }}
+                    />
+                    <span className={`text-xs font-semibold tabular-nums ${autoOn ? 'text-emerald-500' : 'text-muted-foreground'}`}>
+                      {autoOn ? 'ON' : 'OFF'}
+                    </span>
+                  </div>
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8 gap-1.5"
+                    className={`h-8 gap-1.5 ${
+                      selected.status === 'active'
+                        ? 'border-amber-500/40 text-amber-600 hover:bg-amber-500/10 hover:text-amber-600 dark:text-amber-400'
+                        : 'border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-600 dark:text-emerald-400'
+                    }`}
                     onClick={() => handleToggle(selected)}
                     loading={updateStatus.isPending}
+                    title={selected.status === 'active' ? 'Pause this campaign (stops sending)' : 'Activate this campaign (starts sending)'}
                   >
                     {selected.status === 'active' ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                    {selected.status === 'active' ? 'Pause' : 'Activate'}
+                    {selected.status === 'active' ? 'Pause campaign' : 'Activate campaign'}
                   </Button>
                 </div>
               </div>
