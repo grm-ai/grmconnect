@@ -634,9 +634,15 @@ export default function CampaignsPage() {
                     const sm = progress.summary || {}
                     return (
                       <div className="space-y-3">
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
                           <Card className="p-2.5"><p className="text-lg font-bold">{sm.enrolled ?? 0}</p><p className="text-[10px] text-muted-foreground">Enrolled</p></Card>
                           <Card className="p-2.5"><p className="text-lg font-bold text-emerald-500">{sm.connect?.SUCCESS ?? 0}</p><p className="text-[10px] text-muted-foreground">Invites sent</p></Card>
+                          <Card className="p-2.5">
+                            <p className="text-lg font-bold text-teal-500">{sm.accepted ?? 0}</p>
+                            <p className="text-[10px] text-muted-foreground">
+                              Accepted{(sm.connect?.SUCCESS ?? 0) > 0 ? ` (${Math.round(((sm.accepted ?? 0) / sm.connect.SUCCESS) * 100)}%)` : ''}
+                            </p>
+                          </Card>
                           <Card className="p-2.5"><p className="text-lg font-bold text-amber-500">{sm.message?.SUCCESS ?? 0}</p><p className="text-[10px] text-muted-foreground">Messages sent</p></Card>
                           <Card className="p-2.5"><p className="text-lg font-bold text-blue-500">{sm.followup?.SUCCESS ?? 0}</p><p className="text-[10px] text-muted-foreground">Follow-ups sent</p></Card>
                         </div>

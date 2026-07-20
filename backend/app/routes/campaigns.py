@@ -498,6 +498,7 @@ async def campaign_progress(
 
     leads_out: list[dict] = []
     summary = {"enrolled": 0,
+               "accepted": 0,
                "connect": {"SUCCESS": 0, "PENDING": 0, "FAILED": 0},
                "message": {"SUCCESS": 0, "PENDING": 0, "FAILED": 0},
                "followup": {"SUCCESS": 0, "PENDING": 0, "FAILED": 0}}
@@ -511,6 +512,8 @@ async def campaign_progress(
         if lead.connection_status in (ConnectionStatus.ACCEPTED, ConnectionStatus.PENDING) and e.get("connect"):
             e["connect"]["status"] = "SUCCESS"
         summary["enrolled"] += 1
+        if lead.connection_status == ConnectionStatus.ACCEPTED:
+            summary["accepted"] += 1
         for k in ("connect", "message", "followup"):
             st = (e.get(k) or {}).get("status")
             if st in ("SUCCESS", "FAILED"):
