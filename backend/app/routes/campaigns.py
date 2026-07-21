@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db, require_auth
@@ -24,7 +24,11 @@ from app.schemas import (
 
 router = APIRouter(prefix="/campaigns", tags=["Campaigns"])
 
-# Default drip: (day_offset, action_type). Day 0 connect → Day 2 message → Day 5 follow-up.
+# Default drip: (day_offset, action_type). CONNECT fires immediately at activation. MESSAGE/FOLLOWUP
+# day_offset is used dynamically at /due time, anchored to REAL events (acceptance / last send), not
+# to campaign-activation time — see campaign_due_actions. MESSAGE = day_offset after acceptance;
+# FOLLOWUP ignores day_offset and instead fires a fixed 24h after MESSAGE actually went out, only if
+# unanswered (see the FOLLOWUP branch below).
 _DEFAULT_SEQUENCE = [
     (0, ActionType.CONNECT),
     (2, ActionType.MESSAGE),
@@ -211,9 +215,11 @@ async def campaign_due_actions(
     user: User = Depends(get_current_user),
 ) -> ApiResponse[list[dict]]:
     """
-    Return the DUE steps for a campaign (scheduled_at <= now, still PENDING), gated by relationship
-    state and capped at the campaign's daily_limit. CONNECT is due only while the lead is NOT_SENT;
-    MESSAGE/FOLLOWUP only once the lead is ACCEPTED (connected). Message text is AI-generated here.
+    Return the DUE steps for a campaign, gated by relationship state and capped at the campaign's
+    daily_limit. CONNECT is due once scheduled_at <= now and the lead is NOT_SENT. MESSAGE/FOLLOWUP
+    are due once the lead is ACCEPTED AND real-event timing/reply gates pass (see the MESSAGE/FOLLOWUP
+    branch below) — never both in the same tick just because acceptance was delayed, and never while
+    an inbound reply sits unanswered. Message text is AI-generated here.
     """
     campaign = await db.get(Campaign, campaign_id)
     if not campaign or campaign.user_id != user.id:
@@ -313,11 +319,17 @@ async def campaign_due_actions(
     connect_remaining = max(0, _cfg.daily_connect_limit - connect_used - running_connect)
     msg_remaining = max(0, _cfg.daily_message_limit - msg_used - running_msg)
 
+    # CONNECT is gated by its baked scheduled_at (always "now" at enrollment — fires immediately).
+    # MESSAGE/FOLLOWUP are NOT gated here by their baked scheduled_at anymore — that value was an
+    # absolute offset from campaign ACTIVATION time, so a connect that sat PENDING for a week before
+    # being accepted made every later step "due" simultaneously the moment acceptance landed (all
+    # fired in the same tick). They're re-gated dynamically below against real events instead
+    # (lead.connection_accepted_at / actual last-message time).
     rows = (await db.execute(
         select(Action).where(
             Action.campaign_id == campaign_id,
             Action.status == ActionStatus.PENDING,
-            Action.scheduled_at <= now,
+            or_(Action.action_type != ActionType.CONNECT, Action.scheduled_at <= now),
         ).order_by(Action.scheduled_at)
     )).scalars().all()
 
@@ -358,6 +370,42 @@ async def campaign_due_actions(
             )).scalar_one_or_none()
             if not connect_won:
                 continue  # pre-existing connection (name-matched) → don't auto-message
+
+            # Real-event gating — replaces the old "scheduled_at <= now" check for these two types.
+            # If the lead has EVER replied, the conversation is already live and autopilot owns it —
+            # cancel this canned step outright rather than let it fire later (immediately, or after
+            # autopilot's own reply) and derail/duplicate an ongoing exchange. This is what stops the
+            # exact bug reported: a lead who already replied "we don't need this now" getting the
+            # canned pitch fired at them again as if nothing was said.
+            ever_replied = (await db.execute(
+                select(Message.id).where(
+                    Message.lead_id == lead.id, Message.direction == MessageDirection.INBOUND,
+                ).limit(1)
+            )).scalar_one_or_none()
+            if ever_replied:
+                a.status = ActionStatus.CANCELLED
+                a.result = {"skipped": "lead already replied — autopilot handling the thread"}
+                _dirty["v"] = True
+                continue
+
+            last_msg = (await db.execute(
+                select(Message).where(Message.lead_id == lead.id)
+                .order_by(Message.sent_at.desc()).limit(1)
+            )).scalar_one_or_none()
+            day_offset = (a.payload or {}).get("day_offset", 0)
+            if a.action_type == ActionType.MESSAGE:
+                # MESSAGE waits for the lead's ACTUAL acceptance time (not a stale activation-time
+                # bake — a week-late accept no longer makes both MESSAGE and FOLLOWUP due at once).
+                anchor = lead.connection_accepted_at or lead.connection_sent_at or now
+                if now < anchor + timedelta(days=day_offset):
+                    continue
+            else:  # FOLLOWUP
+                # Only due once our MESSAGE has actually gone out AND 24h have passed unanswered.
+                if not last_msg or last_msg.direction != MessageDirection.OUTBOUND:
+                    continue  # MESSAGE step hasn't actually sent yet
+                if now < last_msg.sent_at + timedelta(hours=24):
+                    continue
+
             if msg_added >= msg_remaining:
                 continue  # global daily message limit reached
             text = await resolve_text(a, lead)

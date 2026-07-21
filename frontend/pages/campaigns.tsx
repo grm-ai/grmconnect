@@ -68,8 +68,9 @@ export default function CampaignsPage() {
   async function handleSync(campaignId: string) {
     setSyncing(true)
     try {
-      toast.info('Syncing — reading who accepted your invites from LinkedIn…', { duration: 4000 })
+      toast.info('Syncing — reading who accepted your invites and any new replies from LinkedIn…', { duration: 4000 })
       await syncAcceptance()
+      await fetchInboxSilently()
       await loadProgress(campaignId)
       qc.invalidateQueries({ queryKey: ['leads'] })
       qc.invalidateQueries({ queryKey: ['conversations'] })
@@ -155,6 +156,18 @@ export default function CampaignsPage() {
     window.addEventListener('leadpilot-sync-status-result', onResult as any)
     window.dispatchEvent(new CustomEvent('leadpilot-sync-status'))
     setTimeout(() => { window.removeEventListener('leadpilot-sync-status-result', onResult as any); resolve(false) }, 60000)
+  })
+
+  // Pull new inbound LinkedIn messages into the DB (POST /inbox/ingest under the hood). Without
+  // this, nothing ever puts a prospect's reply into the Message table on its own — it previously
+  // required a human to click "Fetch Inbox" on the Conversations page — so autopilot never saw
+  // replies and the plain drip (MESSAGE/FOLLOWUP due-check) never knew to hold off. Run once per
+  // auto-run cycle, same cadence as syncAcceptance, before deciding what's due.
+  const fetchInboxSilently = () => new Promise<boolean>((resolve) => {
+    const onResult = (e: Event) => { window.removeEventListener('leadpilot-fetch-inbox-result', onResult as any); resolve(!!(e as CustomEvent).detail?.success) }
+    window.addEventListener('leadpilot-fetch-inbox-result', onResult as any)
+    window.dispatchEvent(new CustomEvent('leadpilot-fetch-inbox'))
+    setTimeout(() => { window.removeEventListener('leadpilot-fetch-inbox-result', onResult as any); resolve(false) }, 60000)
   })
 
   // Execute the currently DUE steps for a campaign via the extension. `silent` = background auto-run.
@@ -260,8 +273,11 @@ export default function CampaignsPage() {
       try {
         const active = (campaigns || []).filter(c => c.status === 'active')
         if (!active.length) return
-        // Sync acceptance ONCE per cycle (reads the whole connections list), then run each campaign.
+        // Sync acceptance + pull new replies ONCE per cycle, then run each campaign. Inbox must be
+        // fetched BEFORE due-steps/autopilot so both see any reply that just came in this cycle
+        // instead of acting a tick behind (or never, if no one opens Conversations to click Fetch).
         try { await syncAcceptance() } catch {}
+        try { await fetchInboxSilently() } catch {}
         for (const c of active) {
           if (stop) break
           try { await runDueSteps(c.id, true, true) } catch {}
