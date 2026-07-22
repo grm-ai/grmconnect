@@ -308,7 +308,11 @@ class AIGenerator:
                     _WORKING_GEMINI_MODEL = name  # cache the winner for later calls
                     if text.startswith('"') and text.endswith('"'):
                         text = text[1:-1]
-                    return text[:300]
+                    # Word/sentence-aware cut — a raw text[:300] here shipped messages that stopped
+                    # mid-sentence ("...might be a") straight to LinkedIn, since generate_message()/
+                    # generate_reply() return this value as-is with no truncation pass of their own
+                    # (unlike generate_connect_note(), which re-clamps to 200 afterward anyway).
+                    return _smart_truncate(text, 300)
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
                 msg = str(exc).lower()
