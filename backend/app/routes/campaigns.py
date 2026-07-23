@@ -641,6 +641,7 @@ async def campaign_autopilot_pending(
         return ApiResponse(data=[], message="Autopilot is off for this campaign.")
 
     from app.services.ai_generator import AIGenerator
+    from app.routes.settings_route import get_user_keys
 
     lead_ids = (await db.execute(
         select(Action.lead_id).where(
