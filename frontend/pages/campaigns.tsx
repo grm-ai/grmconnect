@@ -61,6 +61,23 @@ export default function CampaignsPage() {
   // different LinkedIn quota, so they're left unaffected.
   const connectBlockedUntilRef = React.useRef(0)
 
+  // Auto-run runs silently (no toasts) so it doesn't spam the user every 3 minutes — but that
+  // meant a REAL blocker (LinkedIn session expired, no LinkedIn tab open, extension not loaded)
+  // failed every single cycle with zero visible signal: every result from the extension carries
+  // a human-readable `.error`, but syncAcceptance/fetchInboxSilently/runMessage collapsed it down
+  // to a bare boolean and runDueSteps never looked at `.error` on failure — so "nothing sent, no
+  // error either" was expected behavior, not a fluke. Surface it, throttled per distinct message
+  // so a persistent problem still only interrupts once per 10 min instead of every tick.
+  const autoRunErrorNotifiedRef = React.useRef<Map<string, number>>(new Map())
+  function notifyAutoRunIssue(msg: string) {
+    if (!msg) return
+    const now = Date.now()
+    const last = autoRunErrorNotifiedRef.current.get(msg) || 0
+    if (now - last < 10 * 60 * 1000) return
+    autoRunErrorNotifiedRef.current.set(msg, now)
+    toast.error(`Auto-run: ${msg}`, { duration: 10000 })
+  }
+
   // Manual Sync/Refresh: ask the extension to read who accepted your invites from LinkedIn,
   // reconcile it into the DB (flips leads to ACCEPTED → Day-2 messages become due), and refresh
   // the progress table + all related views.
@@ -140,22 +157,27 @@ export default function CampaignsPage() {
     window.dispatchEvent(new CustomEvent('leadpilot-send-invite', { detail: { linkedin_url: act.linkedin_url, note: act.text ?? '', job_id: jobId } }))
     setTimeout(() => { window.removeEventListener(`leadpilot-invite-result-${jobId}`, onResult as any); resolve({ success: false, error: 'timeout' }) }, 120000)
   })
-  const runMessage = (act: any) => new Promise<boolean>((resolve) => {
+  const runMessage = (act: any) => new Promise<any>((resolve) => {
     const reqId = String(Date.now()) + Math.random()
-    const onResult = (e: Event) => { window.removeEventListener(`leadpilot-send-message-result-${reqId}`, onResult as any); resolve(!!(e as CustomEvent).detail?.success) }
+    const onResult = (e: Event) => { window.removeEventListener(`leadpilot-send-message-result-${reqId}`, onResult as any); resolve((e as CustomEvent).detail || { success: false }) }
     window.addEventListener(`leadpilot-send-message-result-${reqId}`, onResult as any)
     window.dispatchEvent(new CustomEvent('leadpilot-send-message', { detail: { reqId, target: act.thread || undefined, linkedin_url: act.linkedin_url, text: act.text } }))
-    setTimeout(() => { window.removeEventListener(`leadpilot-send-message-result-${reqId}`, onResult as any); resolve(false) }, 60000)
+    setTimeout(() => { window.removeEventListener(`leadpilot-send-message-result-${reqId}`, onResult as any); resolve({ success: false, error: 'timeout' }) }, 60000)
   })
 
   // Detect who ACCEPTED the connection request: ask the extension to read LinkedIn's connections
   // list and reconcile it into the DB (flips leads to ACCEPTED, by vanity OR fsd_profile id). This
   // is what makes Day-2 MESSAGE steps become "due" — without it, accepts are never noticed.
   const syncAcceptance = () => new Promise<boolean>((resolve) => {
-    const onResult = (e: Event) => { window.removeEventListener('leadpilot-sync-status-result', onResult as any); resolve(!!(e as CustomEvent).detail?.success) }
+    const onResult = (e: Event) => {
+      window.removeEventListener('leadpilot-sync-status-result', onResult as any)
+      const d = (e as CustomEvent).detail
+      if (!d?.success && d?.error) notifyAutoRunIssue(`couldn't check who accepted — ${d.error}`)
+      resolve(!!d?.success)
+    }
     window.addEventListener('leadpilot-sync-status-result', onResult as any)
     window.dispatchEvent(new CustomEvent('leadpilot-sync-status'))
-    setTimeout(() => { window.removeEventListener('leadpilot-sync-status-result', onResult as any); resolve(false) }, 60000)
+    setTimeout(() => { window.removeEventListener('leadpilot-sync-status-result', onResult as any); notifyAutoRunIssue("couldn't check who accepted — extension didn't respond in 60s"); resolve(false) }, 60000)
   })
 
   // Pull new inbound LinkedIn messages into the DB (POST /inbox/ingest under the hood). Without
@@ -164,10 +186,15 @@ export default function CampaignsPage() {
   // replies and the plain drip (MESSAGE/FOLLOWUP due-check) never knew to hold off. Run once per
   // auto-run cycle, same cadence as syncAcceptance, before deciding what's due.
   const fetchInboxSilently = () => new Promise<boolean>((resolve) => {
-    const onResult = (e: Event) => { window.removeEventListener('leadpilot-fetch-inbox-result', onResult as any); resolve(!!(e as CustomEvent).detail?.success) }
+    const onResult = (e: Event) => {
+      window.removeEventListener('leadpilot-fetch-inbox-result', onResult as any)
+      const d = (e as CustomEvent).detail
+      if (!d?.success && d?.error) notifyAutoRunIssue(`couldn't fetch inbox — ${d.error}`)
+      resolve(!!d?.success)
+    }
     window.addEventListener('leadpilot-fetch-inbox-result', onResult as any)
     window.dispatchEvent(new CustomEvent('leadpilot-fetch-inbox'))
-    setTimeout(() => { window.removeEventListener('leadpilot-fetch-inbox-result', onResult as any); resolve(false) }, 60000)
+    setTimeout(() => { window.removeEventListener('leadpilot-fetch-inbox-result', onResult as any); notifyAutoRunIssue("couldn't fetch inbox — extension didn't respond in 60s"); resolve(false) }, 60000)
   })
 
   // Execute the currently DUE steps for a campaign via the extension. `silent` = background auto-run.
@@ -175,7 +202,13 @@ export default function CampaignsPage() {
     // First reconcile acceptance so newly-accepted leads' Day-2 message becomes due this cycle.
     // (skipSync when the caller already synced this cycle — e.g. auto-run over many campaigns.)
     if (!skipSync) { try { await syncAcceptance() } catch {} }
-    const due = await jfetch('GET', `/campaigns/${campaignId}/due`)
+    let due: any
+    try {
+      due = await jfetch('GET', `/campaigns/${campaignId}/due`)
+    } catch (e: any) {
+      if (silent) notifyAutoRunIssue(`couldn't reach the server to check due steps — ${e?.message || 'network error'}`)
+      throw e
+    }
     const actions: any[] = due?.data || []
     if (!actions.length) {
       if (!silent) toast.info("Nothing to send right now — either today's daily limit is reached, or all leads are already invited / awaiting acceptance. Try again tomorrow.", { duration: 7000 })
@@ -193,14 +226,19 @@ export default function CampaignsPage() {
       if (a.action_type === 'CONNECT' && Date.now() < connectBlockedUntilRef.current) continue
       let res: any = { success: false }
       try {
-        res = a.action_type === 'CONNECT' ? await runConnect(a) : { success: await runMessage(a) }
-      } catch {}
+        res = a.action_type === 'CONNECT' ? await runConnect(a) : await runMessage(a)
+      } catch (e: any) { res = { success: false, error: e?.message || 'unknown error' } }
       if (res.rate_limited) {
         connectBlockedUntilRef.current = Date.now() + 30 * 60 * 1000
         toast.error('LinkedIn has capped connection invites for now — pausing invite sends for 30 min so we don’t keep hitting the wall. Messages/follow-ups continue normally.', { duration: 8000 })
         continue   // don't record a failed result — leave it PENDING to retry after the backoff
       }
       const done = !!res.success || !!res.already_connected || !!res.already_pending
+      if (silent && !done && res.error) {
+        notifyAutoRunIssue(res.session_expired
+          ? 'LinkedIn session expired — log into LinkedIn in an open tab, then it will resume automatically.'
+          : `send to ${a.lead_name || 'a lead'} failed — ${res.error}`)
+      }
       await jfetch('POST', `/campaigns/actions/${a.action_id}/result`, {
         success: !!res.success,
         already_connected: !!res.already_connected,
@@ -227,8 +265,14 @@ export default function CampaignsPage() {
     let sent = 0
     for (const it of items) {
       if (!isCampaignActive(campaignId)) break
-      let ok = false
-      try { ok = await runMessage({ thread: it.thread, linkedin_url: it.linkedin_url, text: it.reply }) } catch {}
+      let res: any = { success: false }
+      try { res = await runMessage({ thread: it.thread, linkedin_url: it.linkedin_url, text: it.reply }) } catch (e: any) { res = { success: false, error: e?.message } }
+      const ok = !!res.success
+      if (!ok && res.error) {
+        notifyAutoRunIssue(res.session_expired
+          ? 'LinkedIn session expired — log into LinkedIn in an open tab, then it will resume automatically.'
+          : `autopilot reply failed — ${res.error}`)
+      }
       if (ok) {
         try { await jfetch('POST', `/inbox/${it.lead_id}/record`, { body: it.reply, campaign_id: Number(campaignId) }) } catch {}
         sent++
@@ -271,13 +315,16 @@ export default function CampaignsPage() {
       if (stop || running || autoRunInFlightRef.current) return
       autoRunInFlightRef.current = true
       try {
-        const active = (campaigns || []).filter(c => c.status === 'active')
-        if (!active.length) return
-        // Sync acceptance + pull new replies ONCE per cycle, then run each campaign. Inbox must be
-        // fetched BEFORE due-steps/autopilot so both see any reply that just came in this cycle
-        // instead of acting a tick behind (or never, if no one opens Conversations to click Fetch).
+        // Sync acceptance + pull new replies EVERY cycle, regardless of whether any campaign is
+        // currently active — these reflect real LinkedIn state (who accepted, what came in) and
+        // must stay current even while all campaigns are paused/draft. Previously this sat AFTER
+        // an "if no active campaigns, return" check, so accept/reply detection silently stopped
+        // running the moment nothing was active — confirmed: an accept at 1:55pm never showed up
+        // until a manual "Fetch Inbox" click. Inbox is fetched before the due-steps/autopilot loop
+        // so both see any reply that just came in this cycle instead of acting a tick behind.
         try { await syncAcceptance() } catch {}
         try { await fetchInboxSilently() } catch {}
+        const active = (campaigns || []).filter(c => c.status === 'active')
         for (const c of active) {
           if (stop) break
           try { await runDueSteps(c.id, true, true) } catch {}
