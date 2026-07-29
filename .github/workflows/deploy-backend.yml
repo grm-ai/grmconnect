@@ -1,0 +1,33 @@
+name: Deploy backend to EC2
+
+# Redeploys the AWS EC2 backend on every push to main that touches backend
+# code or the EC2 deployment config. Requires 3 repo secrets (Settings →
+# Secrets and variables → Actions):
+#   EC2_HOST     the Elastic IP (e.g. 15.206.177.105)
+#   EC2_USER     ubuntu
+#   EC2_SSH_KEY  full contents of the .pem key file used to SSH into the box
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "infrastructure/aws/**"
+  workflow_dispatch: {}   # lets you trigger a redeploy manually from the Actions tab
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH and redeploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd ~/grmconnect
+            git pull origin main
+            cd infrastructure/aws
+            docker compose up --build -d
+            docker image prune -f
