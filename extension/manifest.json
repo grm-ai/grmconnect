@@ -6,7 +6,7 @@
   "permissions": ["cookies", "scripting", "tabs", "storage", "debugger"],
   "host_permissions": [
     "https://*.linkedin.com/*",
-    "https://grmconnect-production.up.railway.app/*",
+    "https://api.grmconnect.com/*",
     "http://localhost:8000/*"
   ],
   "background": {

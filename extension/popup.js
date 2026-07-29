@@ -1,4 +1,4 @@
-const API_URL = 'https://grmconnect-production.up.railway.app';
+const API_URL = 'https://api.grmconnect.com';
 
 // The logged-in user's JWT is stored by the content script (from the website) under lp_token.
 function getUserToken() {

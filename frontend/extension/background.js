@@ -1,4 +1,4 @@
-const API = 'https://grmconnect-production.up.railway.app';
+const API = 'https://api.grmconnect.com';
 const KEY = 'dev-secret-key-change-me';
 
 // ── Per-user auth ──────────────────────────────────────────────────────────────
