@@ -1,0 +1,30 @@
+version: "3.9"
+
+# Single-container EC2 deployment — matches the ACTUAL production runtime
+# (backend/Dockerfile → `python run_dev.py`: FastAPI + SQLite + in-process
+# asyncio background worker; no Postgres/Redis/Celery involved).
+#
+# Usage on the EC2 box:
+#   cp .env.production.example .env    # fill in real secrets
+#   docker compose up --build -d
+#   docker compose logs -f
+
+services:
+  api:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    container_name: leadpilot_api
+    env_file: .env
+    ports:
+      - "8000:8000"          # Nginx (on the host) proxies HTTPS -> this port
+    volumes:
+      - api_data:/app/data       # SQLite db file lives here — MUST persist across deploys
+      - api_sessions:/app/sessions
+      - api_logs:/app/logs
+    restart: unless-stopped
+
+volumes:
+  api_data:
+  api_sessions:
+  api_logs:
