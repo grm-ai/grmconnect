@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 from app.config import settings
 from app.logger import app_logger
@@ -8,6 +9,15 @@ from app.logger import app_logger
 # Remembers the first Gemini model that actually generated in this process, so we don't re-probe
 # unavailable models on every request (model availability differs per environment/region).
 _WORKING_GEMINI_MODEL: str | None = None
+
+# A model that just 429'd (quota/rate-limit exhausted) stays "known-bad" for a while so the NEXT
+# lead in the same /due batch — and every batch for the next few minutes — skips straight past it
+# instead of re-trying (and re-failing) it. Without this, a batch of N due leads each pay the full
+# cost of probing every exhausted model before falling back, which is what made /due slow enough to
+# time out / crash the process once the daily free quota ran out (confirmed: worked fine on a fresh
+# quota, broke once it was exhausted mid-day). Keyed by model name, value = epoch time to retry at.
+_MODEL_EXHAUSTED_UNTIL: dict[str, float] = {}
+_EXHAUSTED_BACKOFF_SECONDS = 600  # 10 min — long enough to stop the thrash, short enough to notice a reset
 
 
 def _smart_truncate(text: str, limit: int) -> str:
@@ -299,13 +309,18 @@ class AIGenerator:
             models = [_WORKING_GEMINI_MODEL] + [m for m in models if m != _WORKING_GEMINI_MODEL]
 
         last_exc: Exception | None = None
+        now = time.monotonic()
         for name in models:
+            skip_until = _MODEL_EXHAUSTED_UNTIL.get(name)
+            if skip_until and skip_until > now:
+                continue  # known quota-exhausted/unavailable very recently — don't pay for a re-probe
             try:
                 model = self._genai.GenerativeModel(name)
                 response = await loop.run_in_executor(None, lambda: model.generate_content(prompt))
                 text = (response.text or "").strip()
                 if text:
                     _WORKING_GEMINI_MODEL = name  # cache the winner for later calls
+                    _MODEL_EXHAUSTED_UNTIL.pop(name, None)
                     if text.startswith('"') and text.endswith('"'):
                         text = text[1:-1]
                     # Word/sentence-aware cut — a raw text[:300] here shipped messages that stopped
@@ -323,6 +338,7 @@ class AIGenerator:
                 # generic template.
                 if ("404" in msg or "not found" in msg or "not available" in msg or "not supported" in msg
                         or "429" in msg or "exhausted" in msg or "quota" in msg or "rate limit" in msg):
+                    _MODEL_EXHAUSTED_UNTIL[name] = now + _EXHAUSTED_BACKOFF_SECONDS
                     app_logger.warning("Gemini model %s unavailable/exhausted, trying next: %s", name, str(exc)[:140])
                     continue
                 raise

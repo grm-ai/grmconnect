@@ -333,13 +333,25 @@ async def campaign_due_actions(
         ).order_by(Action.scheduled_at)
     )).scalars().all()
 
+    # Bulk-load every lead these rows could reference in ONE query instead of one `db.get()` per
+    # row — a campaign with hundreds of not-yet-accepted leads has that many PENDING MESSAGE/
+    # FOLLOWUP rows sitting in `rows` (created up front at enrollment, gated on real acceptance
+    # events below), and every one of them used to cost its own DB round-trip just to discover
+    # "not accepted yet, skip" before the daily_limit break ever had a chance to fire.
+    lead_ids = {a.lead_id for a in rows if a.lead_id}
+    leads_by_id: dict[int, Lead] = {}
+    if lead_ids:
+        leads_by_id = {
+            l.id: l for l in (await db.execute(select(Lead).where(Lead.id.in_(lead_ids)))).scalars().all()
+        }
+
     out: list[dict] = []
     connect_added = 0
     msg_added = 0
     for a in rows:
         if len(out) >= campaign.daily_limit:
             break
-        lead = await db.get(Lead, a.lead_id) if a.lead_id else None
+        lead = leads_by_id.get(a.lead_id) if a.lead_id else None
         if not lead or not lead.linkedin_url:
             continue
         if a.action_type == ActionType.CONNECT:
