@@ -281,19 +281,35 @@ class AIGenerator:
             self.last_error = "No AI API key configured — add a Gemini key in Settings → API Keys."
             return ""
 
+        # Hard per-provider timeout: /due generates text for up to `daily_limit` due items
+        # SYNCHRONOUSLY inside one HTTP request (nginx allows 120s for this route). A single
+        # provider call that hangs — a blocked/dropped network path to the provider, a retry storm
+        # on a $0-credit key, anything that doesn't fail fast — used to stall the ENTIRE batch past
+        # nginx's timeout, so the whole request died with an empty 502/504 and NOTHING (not even a
+        # fallback-template note) ever reached the browser for ANY of the due leads. Bounding each
+        # provider attempt means a stuck call degrades to "use the template for this one lead" in
+        # a few seconds instead of taking the whole batch down with it.
+        _CALL_TIMEOUT_S = 8
+
         if self._gemini:
             try:
-                result = await self._call_gemini(prompt)
+                result = await asyncio.wait_for(self._call_gemini(prompt), timeout=_CALL_TIMEOUT_S)
                 if result:
                     return result
                 self.last_error = "Gemini returned an empty response."
+            except asyncio.TimeoutError:
+                self.last_error = f"Gemini call timed out after {_CALL_TIMEOUT_S}s"
+                app_logger.warning("Gemini call timed out after %ss, trying Anthropic", _CALL_TIMEOUT_S)
             except Exception as exc:
                 self.last_error = f"Gemini error: {str(exc)[:300]}"
                 app_logger.warning("Gemini call failed, trying Anthropic: %s", exc)
 
         if self._anthropic:
             try:
-                return await self._call_anthropic(prompt)
+                return await asyncio.wait_for(self._call_anthropic(prompt), timeout=_CALL_TIMEOUT_S)
+            except asyncio.TimeoutError:
+                self.last_error = f"Anthropic call timed out after {_CALL_TIMEOUT_S}s"
+                app_logger.error("Anthropic call timed out after %ss", _CALL_TIMEOUT_S)
             except Exception as exc:
                 self.last_error = f"Anthropic error: {str(exc)[:300]}"
                 app_logger.error("Anthropic call failed: %s", exc)

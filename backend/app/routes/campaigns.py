@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time as _time
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -241,6 +242,14 @@ async def campaign_due_actions(
     goal = (campaign.goal or "").strip()
     _dirty = {"v": False}
 
+    # Each due item can trigger a live AI call (up to two providers, each individually timeboxed —
+    # see AIGenerator._call). Even with that, a big enough batch can still add up past nginx's
+    # 120s proxy_read_timeout for this route, which used to kill the WHOLE response (and so every
+    # lead in it, not just the slow one) before anything reached the browser. Past this wall-clock
+    # budget, skip straight to the fallback template for any remaining items instead of calling AI —
+    # slightly less personalized beats "nothing sent this cycle at all".
+    _due_deadline = _time.monotonic() + 70
+
     async def resolve_text(a: Action, lead: Lead) -> str:
         text = (a.payload or {}).get("text") or ""
         if text or not (a.payload or {}).get("ai"):
@@ -251,6 +260,8 @@ async def campaign_due_actions(
                 from app.services.ai_generator import _smart_truncate
                 text = _smart_truncate(text, 200)
             return text
+        if _time.monotonic() > _due_deadline:
+            return ""  # out of budget this cycle — caller falls back to a template, not silence
         if a.action_type == ActionType.CONNECT:
             t = await ai.generate_connect_note(
                 lead.name, lead.company, lead.title,
