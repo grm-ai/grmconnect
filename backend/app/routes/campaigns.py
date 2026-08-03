@@ -43,6 +43,18 @@ def _vanity(url: str | None) -> str | None:
     return (url.split("/in/")[1].split("/")[0].split("?")[0].strip().lower()) or None
 
 
+def _aware(dt: datetime | None) -> datetime | None:
+    """SQLite has no real tz-aware datetime type — a `DateTime(timezone=True)` column still comes
+    back naive on read even though it was written from a UTC-aware value. Comparing that naive
+    value against `datetime.now(timezone.utc)` raises `TypeError: can't compare offset-naive and
+    offset-aware datetimes` — this is what was crashing /due for every lead once any of them had a
+    connection_accepted_at / sent_at / message timestamp to compare (day 1 had none yet, so it
+    never fired). Everything we write is already UTC, so a naive value just needs the label back."""
+    if dt is not None and dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 @router.post("", response_model=ApiResponse[CampaignOut], status_code=status.HTTP_201_CREATED)
 async def create_campaign(
     body: CampaignCreate,
@@ -419,14 +431,14 @@ async def campaign_due_actions(
             if a.action_type == ActionType.MESSAGE:
                 # MESSAGE waits for the lead's ACTUAL acceptance time (not a stale activation-time
                 # bake — a week-late accept no longer makes both MESSAGE and FOLLOWUP due at once).
-                anchor = lead.connection_accepted_at or lead.connection_sent_at or now
+                anchor = _aware(lead.connection_accepted_at) or _aware(lead.connection_sent_at) or now
                 if now < anchor + timedelta(days=day_offset):
                     continue
             else:  # FOLLOWUP
                 # Only due once our MESSAGE has actually gone out AND 24h have passed unanswered.
                 if not last_msg or last_msg.direction != MessageDirection.OUTBOUND:
                     continue  # MESSAGE step hasn't actually sent yet
-                if now < last_msg.sent_at + timedelta(hours=24):
+                if now < _aware(last_msg.sent_at) + timedelta(hours=24):
                     continue
 
             if msg_added >= msg_remaining:
