@@ -53,7 +53,11 @@
   // A reload re-triggered Sales Navigator's slow lazy-load and captured only part of the 25;
   // clicking "Next" keeps the already-loaded SPA, and SN paints the next 25 exactly the way it
   // did for page 1 (which is why page 1 always worked and reloaded pages 2+ didn't).
-  const cardSel = 'a[data-control-name="view_lead_panel_via_search_lead_name"]';
+  // SN cards carry a distinct data-control-name; regular search results don't, so fall back
+  // to any /in/ profile link there — used below to detect whether "Next" actually advanced the page.
+  const cardSel = isSN
+    ? 'a[data-control-name="view_lead_panel_via_search_lead_name"]'
+    : 'a[href*="/in/"]';
   let pageNum    = job.page  || 0;
   let totalSoFar = job.total || 0;
 
@@ -314,6 +318,17 @@ function extractProfiles() {
 
   function txt(el) { return (el?.innerText ?? el?.textContent ?? '').trim(); }
 
+  // Some LinkedIn card layouts nest the "· 1st/2nd/3rd" connection-degree badge INSIDE
+  // the same title block (sometimes even inside the same <a>) as the name, so picking
+  // "the first aria-hidden span" isn't reliable. Strip badge/visually-hidden nodes out
+  // of a clone and read whatever text is left instead.
+  function nameFromTitleBlock(el) {
+    if (!el) return '';
+    const clone = el.cloneNode(true);
+    clone.querySelectorAll('[class*="badge"], .visually-hidden').forEach(n => n.remove());
+    return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+  }
+
   function push(href, name, title, company, location, source, extra) {
     href = href.split('?')[0].replace(/\/$/, '');
     if (!href || !name || name.length < 2 || seen.has(href)) return;
@@ -339,9 +354,10 @@ function extractProfiles() {
     try {
       const a = c.querySelector('a[href*="/in/"]');
       if (!a?.href) continue;
-      const nameEl = c.querySelector('span[aria-hidden="true"]') || c.querySelector('.entity-result__title-text');
-      const name = txt(nameEl);
-      if (!name || name.toLowerCase().includes('linkedin member')) continue;
+      const titleBlock = c.querySelector('.entity-result__title-text') || a;
+      const name = nameFromTitleBlock(titleBlock);
+      if (!name || name.length < 2 || name.toLowerCase().includes('linkedin member')) continue;
+      if (/^[•·]?\s*(1st|2nd|3rd)\b/i.test(name)) continue;
       push(a.href, name,
         txt(c.querySelector('.entity-result__primary-subtitle')),
         txt(c.querySelector('.entity-result__secondary-subtitle')),
